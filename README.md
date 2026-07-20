@@ -262,7 +262,91 @@ npm run deploy:cf
 
 使用官方镜像在服务器或本地容器环境中运行。
 
-**Docker CLI**
+**服务端默认设置：**
+
+应用启动时会读取同源 `/app-config.json`。设置中的“默认服务”首次默认为开启；开启后，API 与 Agent 配置以该文件为准，用户只能填写服务端活动配置的 API Key，习惯配置仍保存在当前浏览器。配置文件格式如下：
+
+```json
+{
+  "version": 1,
+  "settings": {
+    "profiles": [
+      {
+        "id": "default-openai",
+        "name": "图片",
+        "description": "用于图片生成与编辑。",
+        "provider": "openai",
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "",
+        "model": "gpt-image-2",
+        "timeout": 600,
+        "apiMode": "images",
+        "codexCli": false,
+        "apiProxy": false,
+        "responseFormatB64Json": false,
+        "streamImages": false,
+        "streamPartialImages": 1,
+        "transparentBackgroundMethod": "api"
+      },
+      {
+        "id": "responses-api",
+        "name": "智能代理",
+        "description": "用于智能代理对话与工具调用。",
+        "isDefault": true,
+        "provider": "openai",
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "",
+        "model": "gpt-5.6-terra",
+        "timeout": 600,
+        "apiMode": "responses",
+        "reasoningEffort": "medium",
+        "codexCli": false,
+        "apiProxy": false,
+        "responseFormatB64Json": false,
+        "streamImages": true,
+        "streamPartialImages": 3,
+        "transparentBackgroundMethod": "api"
+      }
+    ],
+    "activeProfileId": "responses-api"
+  }
+}
+```
+
+`reasoningEffort` 仅用于 Responses API，可设置为 `none`、`minimal`、`low`、`medium`、`high`、`xhigh` 或 `max`。`responseFormatB64Json: true` 会要求 Images API 直接返回 Base64 图片，并非所有服务商或网关都支持；关闭时可设为 `false` 或省略。`transparentBackgroundMethod` 可设为 `api`（接口原生透明背景）或 `local`（浏览器本地后处理）。
+
+多配置时，`isDefault: true` 必须且只能标记一项，用于表示部署默认配置；`activeProfileId` 则决定默认服务加载后实际使用的活动配置，两者建议指向同一 profile。仓库中的 `public/app-config.json` 提供完整默认示例。部署时可以替换该文件；Docker 可将自定义文件只读挂载到 `/usr/share/nginx/html/app-config.json`。服务端文件中的 API Key 会被忽略，且 profile ID 在更新配置时应保持稳定。`providerDrafts` 是浏览器切换供应商时使用的内部草稿状态，不应写入服务端配置。
+
+```bash
+docker run -d -p 8080:80 \
+  -v /path/to/app-config.json:/usr/share/nginx/html/app-config.json:ro \
+  ghcr.io/cooksleep/gpt_image_playground:latest
+```
+
+**环境变量：**
+
+| 变量 | 说明 |
+|------|------|
+| `DEFAULT_API_URL` | 预置配置，支持上述三种填写方式。若值指向 `.json` 文件或容器内路径，容器启动时自动读取并内嵌到页面。宿主机文件需通过 volume 挂载。详见 [预置配置说明](#preset-config) |
+| `ENABLE_API_PROXY=true` | 开启 Nginx 同源代理，请求发往 `/api-proxy/{路径}` 再转发到 `API_PROXY_URL` |
+| `API_PROXY_URL` | 代理转发的完整 API 基础地址（不自动补 `/v1`） |
+| `LOCK_API_PROXY=true` | 强制锁定代理为开启，用户无法关闭 |
+| `HOST` / `PORT` | Nginx 监听地址和端口，默认 `0.0.0.0:80` |
+
+> 开启 API 代理后，任何人都能将你的服务器作为代理来请求目标 API。建议仅在有访问控制（如 IP 白名单）或本地网络中开启。
+
+> 旧版 `API_URL` 已拆分为 `DEFAULT_API_URL` 和 `API_PROXY_URL`，容器启动时自动兼容，无需立即修改。
+
+**隐藏真实 API 地址**
+
+配合 `ENABLE_API_PROXY=true` + `LOCK_API_PROXY=true` 可隐藏上游地址：
+
+- OpenAI 兼容接口：`DEFAULT_API_URL` 留空或填占位地址（如 `https://proxy`）。
+- 自定义供应商：JSON 中配置的 `baseUrl` 留空并设置 `apiProxy: true`（仅支持同步配置）。
+
+用户只能看到空值或占位地址，真实地址仅存在于 `API_PROXY_URL`。
+
+**Docker CLI 示例**
 
 ```bash
 docker run -d -p 8080:80 \

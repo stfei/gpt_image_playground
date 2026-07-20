@@ -1,16 +1,29 @@
 import { GIF_FRAME_COUNT_RANGE, GIF_FRAME_DURATION_RANGE, IMAGE_COMPLEXITIES, OUTPUT_FORMATS, type AgentConversation, type AgentInputDraft, type AppMode, type AppSettings, type FavoriteCollection, type InputImage, type MaskDraft, type PresetConfig, type TaskParams } from '../types'
-import { normalizePresetAgent, normalizeSettings } from './apiProfiles'
+import { DEFAULT_SETTINGS, getActiveApiProfile, normalizePresetAgent, normalizeSettings } from './apiProfiles'
 import { normalizeAgentConversations } from './agentConversationState'
 import { ensureDefaultFavoriteCollection, normalizeFavoriteCollections, resolveDefaultFavoriteCollectionId } from './favoriteState'
 import { cleanStaleAgentInputDrafts, getPersistableAgentInputDrafts, isEmptyAgentInputDraft, normalizeAgentInputDraft, normalizeAgentInputDrafts, normalizeAgentInputDraftsByKey, saveGalleryInputDraft } from './inputDraftState'
 import { getPersistableAgentConversations, stripPersistedAgentConversations } from './agentResponseState'
 import { isHttpUrl } from './imageApiShared'
+import {
+  applyLocalPreferenceSettings,
+  applyServerSettingsApiKey,
+  getLocalPreferenceSettings,
+  stripServerSettingsApiKeys,
+  type LocalPreferenceSettings,
+  type ServerSettingsApiKey,
+} from './serverSettings'
 
 export interface PersistedAppState {
   settings: AppSettings
   previousPresetConfig?: PresetConfig | null
   dismissedPresetProfileIds?: string[]
   dismissedPresetProviderIds?: string[]
+  defaultServiceEnabled: boolean
+  customSettingsBackup: AppSettings | null
+  serverSettingsCache: AppSettings | null
+  defaultServiceApiKey: ServerSettingsApiKey | null
+  localPreferenceSettings: LocalPreferenceSettings
   params: TaskParams
   prompt?: string
   inputImages?: InputImage[]
@@ -31,7 +44,15 @@ export interface PersistedAppState {
   imageSourceUrls: Record<string, string>
 }
 
-type PersistedStateSource = Omit<PersistedAppState, 'prompt' | 'inputImages' | 'agentConversations'> & {
+type DefaultServicePersistedState = Pick<
+  PersistedAppState,
+  'defaultServiceEnabled' | 'customSettingsBackup' | 'serverSettingsCache' | 'defaultServiceApiKey' | 'localPreferenceSettings'
+>
+
+type PersistedStateSource = Omit<
+  PersistedAppState,
+  'prompt' | 'inputImages' | 'agentConversations' | keyof DefaultServicePersistedState
+> & Partial<DefaultServicePersistedState> & {
   prompt: string
   inputImages: InputImage[]
   maskDraft: MaskDraft | null
@@ -42,7 +63,7 @@ type PersistedStateSource = Omit<PersistedAppState, 'prompt' | 'inputImages' | '
 type PersistedStateFallback = Pick<
   PersistedAppState,
   'settings' | 'params' | 'dismissedPresetProfileIds' | 'dismissedPresetProviderIds' | 'dismissedCodexCliPrompts' | 'favoriteCollections' | 'defaultFavoriteCollectionId'
-> & {
+> & Partial<DefaultServicePersistedState> & {
   agentConversations: AgentConversation[]
 }
 
@@ -117,6 +138,13 @@ export function createPersistedState(state: PersistedStateSource, includeLegacyA
     previousPresetConfig: state.previousPresetConfig ?? null,
     dismissedPresetProfileIds: state.dismissedPresetProfileIds ?? [],
     dismissedPresetProviderIds: state.dismissedPresetProviderIds ?? [],
+    defaultServiceEnabled: state.defaultServiceEnabled ?? false,
+    customSettingsBackup: state.customSettingsBackup ? normalizeSettings(state.customSettingsBackup) : null,
+    serverSettingsCache: state.serverSettingsCache ? stripServerSettingsApiKeys(state.serverSettingsCache) : null,
+    defaultServiceApiKey: state.defaultServiceApiKey && typeof state.defaultServiceApiKey.value === 'string'
+      ? { value: state.defaultServiceApiKey.value }
+      : null,
+    localPreferenceSettings: getLocalPreferenceSettings(state.localPreferenceSettings ?? settings),
     params: state.params,
     ...(settings.persistInputOnRestart && (state.appMode === 'gallery' || galleryInputDraft)
       ? {
@@ -148,9 +176,28 @@ export function createPersistedState(state: PersistedStateSource, includeLegacyA
 
 export function migratePersistedState(persistedState: unknown, _version?: number): unknown {
   if (!isRecord(persistedState)) return persistedState
+  const settings = normalizeSettings(persistedState.settings ?? DEFAULT_SETTINGS)
+  const activeProfile = getActiveApiProfile(settings)
+  const defaultServiceApiKey = isRecord(persistedState.defaultServiceApiKey) &&
+    typeof persistedState.defaultServiceApiKey.value === 'string'
+    ? { value: persistedState.defaultServiceApiKey.value }
+    : activeProfile.apiKey
+      ? { value: activeProfile.apiKey }
+      : null
   return {
     ...persistedState,
     agentConversations: stripPersistedAgentConversations(persistedState.agentConversations),
+    defaultServiceEnabled: typeof persistedState.defaultServiceEnabled === 'boolean'
+      ? persistedState.defaultServiceEnabled
+      : true,
+    customSettingsBackup: persistedState.customSettingsBackup ?? settings,
+    serverSettingsCache: persistedState.serverSettingsCache
+      ? stripServerSettingsApiKeys(persistedState.serverSettingsCache)
+      : null,
+    defaultServiceApiKey,
+    localPreferenceSettings: getLocalPreferenceSettings(
+      persistedState.localPreferenceSettings ?? persistedState.customSettingsBackup ?? settings,
+    ),
   }
 }
 
@@ -161,7 +208,7 @@ export function normalizePersistedState(
 ): PersistedStateMergePlan | null {
   if (!isRecord(persistedState)) return null
 
-  const settings = normalizeSettings(persistedState.settings ?? fallback.settings)
+  const persistedSettings = normalizeSettings(persistedState.settings ?? fallback.settings)
   const previousPresetConfig = isRecord(persistedState.previousPresetConfig) && Array.isArray(persistedState.previousPresetConfig.profiles)
     ? (() => {
         const normalized = normalizeSettings(persistedState.previousPresetConfig)
@@ -173,6 +220,34 @@ export function normalizePersistedState(
         }
       })()
     : null
+  const defaultServiceEnabled = typeof persistedState.defaultServiceEnabled === 'boolean'
+    ? persistedState.defaultServiceEnabled
+    : fallback.defaultServiceEnabled ?? false
+  const customSettingsBackup = persistedState.customSettingsBackup
+    ? normalizeSettings(persistedState.customSettingsBackup)
+    : fallback.customSettingsBackup
+      ? normalizeSettings(fallback.customSettingsBackup)
+      : null
+  const serverSettingsCache = persistedState.serverSettingsCache
+    ? stripServerSettingsApiKeys(persistedState.serverSettingsCache)
+    : fallback.serverSettingsCache
+      ? stripServerSettingsApiKeys(fallback.serverSettingsCache)
+      : null
+  const defaultServiceApiKey = isRecord(persistedState.defaultServiceApiKey) &&
+    typeof persistedState.defaultServiceApiKey.value === 'string'
+    ? { value: persistedState.defaultServiceApiKey.value }
+    : fallback.defaultServiceApiKey && typeof fallback.defaultServiceApiKey.value === 'string'
+      ? { value: fallback.defaultServiceApiKey.value }
+      : null
+  const localPreferenceSettings = getLocalPreferenceSettings(
+    persistedState.localPreferenceSettings ?? persistedState.customSettingsBackup ?? persistedSettings,
+  )
+  const settings = defaultServiceEnabled
+    ? applyServerSettingsApiKey(
+        applyLocalPreferenceSettings(serverSettingsCache ?? DEFAULT_SETTINGS, localPreferenceSettings),
+        defaultServiceApiKey,
+      )
+    : applyLocalPreferenceSettings(persistedSettings, localPreferenceSettings)
   const hasLegacyAgentConversations = Array.isArray(persistedState.agentConversations)
   const agentConversations = hasLegacyAgentConversations
     ? normalizeAgentConversations(persistedState.agentConversations)
@@ -224,6 +299,11 @@ export function normalizePersistedState(
       previousPresetConfig,
       dismissedPresetProfileIds: normalizeStringArray(persistedState.dismissedPresetProfileIds, fallback.dismissedPresetProfileIds ?? []),
       dismissedPresetProviderIds: normalizeStringArray(persistedState.dismissedPresetProviderIds, fallback.dismissedPresetProviderIds ?? []),
+      defaultServiceEnabled,
+      customSettingsBackup,
+      serverSettingsCache,
+      defaultServiceApiKey,
+      localPreferenceSettings,
       params: normalizeParams(persistedState.params, fallback.params),
       dismissedCodexCliPrompts: normalizeStringArray(persistedState.dismissedCodexCliPrompts, fallback.dismissedCodexCliPrompts),
       appMode,

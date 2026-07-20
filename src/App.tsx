@@ -44,6 +44,7 @@ import { isTauri, TITLEBAR_HEIGHT } from './lib/platform'
 import { setSaveToDefaultDir } from './lib/saveFile'
 import { setTauriLogEnabled } from './lib/tauriLog'
 import { getTauriStorageLoadError } from './lib/tauriStorage'
+import { loadServerSettings } from './lib/serverSettings'
 
 let defaultConfigImportStarted = false
 
@@ -173,6 +174,21 @@ export default function App() {
       ? Promise.resolve().then(() => loadEmbeddedDefaultConfig())
       : loadCustomProviderSettingsFromUrl(customProviderConfigUrl)
 
+    const loadAndApplyServerSettings = async () => {
+      try {
+        useStore.getState().injectServerSettings(await loadServerSettings())
+      } catch (error) {
+        console.warn('Failed to load server settings:', error)
+        const state = useStore.getState()
+        state.showToast(
+          state.serverSettingsCache
+            ? '默认服务配置加载失败，已使用上次有效配置'
+            : '默认服务配置加载失败，已使用内置配置',
+          'info',
+        )
+      }
+    }
+
     void initStore()
       .then(async () => {
         const importedSettings = embeddedDefaultConfig || customProviderConfigUrl
@@ -205,7 +221,7 @@ export default function App() {
         const current = useStore.getState()
         const presetIds = getPresetProfileIds()
         const defaultPresetId = getDefaultPresetProfileId()
-        const settings = isPresetConfigOnlyEnabled()
+        const settings = !current.defaultServiceEnabled && isPresetConfigOnlyEnabled()
           ? normalizeSettings({
               ...current.settings,
               activeProfileId: presetIds.has(current.settings.activeProfileId)
@@ -225,7 +241,8 @@ export default function App() {
         console.warn('Failed to import preset config:', error)
         setPresetConfig(null)
       })
-      .finally(() => {
+      .finally(async () => {
+        await loadAndApplyServerSettings()
         // 不等待用户确认，客户端的剪贴板和 deep link 监听依赖它
         setStartupImportDone(true)
         // 预置配置写入后再提示，确认框按导入前的实际设置描述变化
