@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentConversation, AppSettings, FavoriteCollection } from '../types'
 import { DEFAULT_PARAMS } from '../types'
-import { DEFAULT_IMAGES_MODEL, DEFAULT_SETTINGS, switchApiProfileProvider } from './apiProfiles'
+import { createDefaultOpenAIProfile, DEFAULT_IMAGES_MODEL, DEFAULT_SETTINGS, normalizeSettings, switchApiProfileProvider } from './apiProfiles'
 import { DEFAULT_FAVORITE_COLLECTION_ID } from './favoriteState'
 import { createPersistedState, mergePersistedAgentConversations, migratePersistedState, normalizePersistedState } from './persistedState'
+import { getLocalPreferenceSettings } from './serverSettings'
 
 const imageA = { id: 'image-a', dataUrl: 'data:image/png;base64,image-a' }
 const collectionA: FavoriteCollection = { id: 'collection-a', name: '收藏夹 A', createdAt: 1, updatedAt: 1 }
@@ -144,6 +145,67 @@ describe('persisted state codec', () => {
     expect(serialized).toContain('image_generation_call')
     expect(serialized).not.toContain('legacy-base64')
     expect(migratePersistedState('invalid', 1)).toBe('invalid')
+  })
+
+  it('round-trips default service state without persisting server API keys', () => {
+    const serverProfile = createDefaultOpenAIProfile({
+      id: 'server-profile',
+      description: '服务器下发说明',
+      apiKey: 'server-secret',
+      model: 'server-model',
+      apiMode: 'responses',
+      reasoningEffort: 'medium',
+      responseFormatB64Json: true,
+      transparentBackgroundMethod: 'local',
+    })
+    const serverSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      profiles: [serverProfile],
+      activeProfileId: serverProfile.id,
+    })
+    const customProfile = createDefaultOpenAIProfile({
+      id: 'custom-profile',
+      apiKey: 'custom-key',
+      model: 'custom-model',
+    })
+    const customSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      clearInputAfterSubmit: true,
+      profiles: [customProfile],
+      activeProfileId: customProfile.id,
+    })
+    const encoded = createPersistedState({
+      ...source(serverSettings),
+      defaultServiceEnabled: true,
+      customSettingsBackup: customSettings,
+      serverSettingsCache: serverSettings,
+      defaultServiceApiKey: { value: 'local-key' },
+      localPreferenceSettings: getLocalPreferenceSettings(customSettings),
+    })
+
+    expect(encoded.serverSettingsCache?.apiKey).toBe('')
+    expect(encoded.serverSettingsCache?.profiles[0].apiKey).toBe('')
+    expect(encoded.serverSettingsCache?.profiles[0]).toMatchObject({
+      description: '服务器下发说明',
+      reasoningEffort: 'medium',
+      responseFormatB64Json: true,
+      transparentBackgroundMethod: 'local',
+    })
+    expect(encoded.defaultServiceApiKey).toEqual({ value: 'local-key' })
+
+    const result = normalizePersistedState(encoded, fallback(), 100)!
+
+    expect(result.state.defaultServiceEnabled).toBe(true)
+    expect(result.state.settings.model).toBe('server-model')
+    expect(result.state.settings.apiKey).toBe('local-key')
+    expect(result.state.settings.profiles[0]).toMatchObject({
+      description: '服务器下发说明',
+      reasoningEffort: 'medium',
+      responseFormatB64Json: true,
+      transparentBackgroundMethod: 'local',
+    })
+    expect(result.state.settings.clearInputAfterSubmit).toBe(true)
+    expect(result.state.customSettingsBackup?.model).toBe('custom-model')
   })
 
   it('normalizes legacy conversations, active ID, and top-level Agent draft fallback', () => {

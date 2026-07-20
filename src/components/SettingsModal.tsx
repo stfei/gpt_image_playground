@@ -162,6 +162,10 @@ export default function SettingsModal() {
   const dismissPresetProfile = useStore((s) => s.dismissPresetProfile)
   const dismissPresetProvider = useStore((s) => s.dismissPresetProvider)
   const restorePresetProvider = useStore((s) => s.restorePresetProvider)
+  const defaultServiceEnabled = useStore((s) => s.defaultServiceEnabled)
+  const serverSettingsCache = useStore((s) => s.serverSettingsCache)
+  const setDefaultServiceEnabled = useStore((s) => s.setDefaultServiceEnabled)
+  const setDefaultServiceApiKey = useStore((s) => s.setDefaultServiceApiKey)
   const reusedTaskApiProfileId = useStore((s) => s.reusedTaskApiProfileId)
   const setReusedTaskApiProfile = useStore((s) => s.setReusedTaskApiProfile)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
@@ -221,17 +225,20 @@ export default function SettingsModal() {
   const apiProxyConfig = readClientDevProxyConfig()
   const apiProxyAvailable = isApiProxyAvailable(apiProxyConfig)
   const apiProxyLocked = isApiProxyLocked(apiProxyConfig)
-  const presetConfigOnly = isPresetConfigOnlyEnabled()
+  const managedPresetConfigOnly = isPresetConfigOnlyEnabled()
+  const presetConfigOnly = defaultServiceEnabled || managedPresetConfigOnly
   const presetDeletionPrevented = isPresetConfigDeletionPrevented()
   const presetProfileIds = getPresetProfileIds()
-  const visibleProfiles = presetConfigOnly
+  const visibleProfiles = managedPresetConfigOnly && !defaultServiceEnabled
     ? draft.profiles.filter((profile) => presetProfileIds.has(profile.id))
     : draft.profiles
   const profileMenuDisabled = presetConfigOnly && visibleProfiles.length <= 1
-  const defaultProfileId = getDefaultPresetProfileId() ?? getDefaultApiProfileId(draft)
+  const defaultProfileId = defaultServiceEnabled
+    ? getDefaultApiProfileId(draft)
+    : getDefaultPresetProfileId() ?? getDefaultApiProfileId(draft)
   const activeProfile = draft.profiles.find((profile) => profile.id === draft.activeProfileId) ?? draft.profiles[0] ?? getActiveApiProfile(draft)
-  const activePresetDescription = getPresetProfileDescription(activeProfile.id)
-  const activeProfileLocked = isPresetProfileLocked(activeProfile.id)
+  const activePresetDescription = defaultServiceEnabled ? undefined : getPresetProfileDescription(activeProfile.id)
+  const activeProfileLocked = defaultServiceEnabled || isPresetProfileLocked(activeProfile.id)
   const activeProviderIsOpenAICompatible = isOpenAICompatibleProvider(draft, activeProfile.provider)
   const activeProviderUsesApiUrl = activeProviderIsOpenAICompatible || activeProfile.provider === 'fal'
   const activeCustomProvider = getCustomProviderDefinition(draft, activeProfile.provider)
@@ -316,7 +323,7 @@ export default function SettingsModal() {
       wasSettingsOpenRef.current = false
       return
     }
-    if (wasSettingsOpenRef.current) return
+    if (wasSettingsOpenRef.current && !defaultServiceEnabled) return
 
     wasSettingsOpenRef.current = true
     const normalizedSettings = normalizeSettings(settings)
@@ -335,7 +342,7 @@ export default function SettingsModal() {
     setDraft(nextDraft)
     setTimeoutInput(String(getActiveApiProfile(nextDraft).timeout))
     setAgentMaxToolRoundsInput(String(nextDraft.agentMaxToolRounds))
-  }, [apiProxyAvailable, apiProxyLocked, showSettings, settings, reusedTaskApiProfileId])
+  }, [apiProxyAvailable, apiProxyLocked, defaultServiceEnabled, showSettings, settings, reusedTaskApiProfileId])
 
   useEffect(() => {
     setTimeoutInput(String(activeProfile.timeout))
@@ -344,6 +351,13 @@ export default function SettingsModal() {
   useEffect(() => {
     if (showSettings && settingsTabRequest) setActiveTab(settingsTabRequest)
   }, [settingsTabRequest, showSettings])
+
+  useEffect(() => {
+    if (!defaultServiceEnabled) return
+    setExportConfig(false)
+    setImportConfig(false)
+    setClearConfig(false)
+  }, [defaultServiceEnabled])
 
   const updateProfileMenuMaxHeight = useCallback(() => {
     if (!profileMenuTriggerRef.current) return
@@ -533,6 +547,21 @@ export default function SettingsModal() {
     if (activeProfileLocked && (Object.keys(patch).length !== 1 || patch.apiKey === undefined)) return
     const nextDraft = getDraftWithActiveProfilePatch(patch)
     commitSettings(nextDraft)
+  }
+
+  const toggleDefaultService = () => {
+    setDefaultServiceEnabled(!defaultServiceEnabled)
+    const nextDraft = normalizeSettings(useStore.getState().settings)
+    setDraft(nextDraft)
+    setTimeoutInput(String(getActiveApiProfile(nextDraft).timeout))
+    setAgentMaxToolRoundsInput(String(nextDraft.agentMaxToolRounds))
+    setShowProfileMenu(false)
+  }
+
+  const updateDefaultServiceApiKey = (value: string) => {
+    const nextDraft = getDraftWithActiveProfilePatch({ apiKey: value })
+    setDraft(nextDraft)
+    setDefaultServiceApiKey(value)
   }
 
   const handleClose = () => {
@@ -1141,6 +1170,31 @@ export default function SettingsModal() {
           </div>
         </div>
 
+        <div className="shrink-0 border-b border-gray-100 bg-blue-50/50 px-5 py-3 dark:border-white/[0.08] dark:bg-blue-500/[0.04]">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-200">默认服务</div>
+              <div data-selectable-text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {defaultServiceEnabled
+                  ? serverSettingsCache
+                    ? '正在使用服务器下发的配置，仅 API Key 可修改。'
+                    : '正在使用内置配置，服务器配置加载成功后会自动更新。'
+                  : '已关闭，正在使用浏览器本地自定义配置。'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={toggleDefaultService}
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${defaultServiceEnabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+              role="switch"
+              aria-checked={defaultServiceEnabled}
+              aria-label="默认服务"
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${defaultServiceEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+        </div>
+
         <div className="flex flex-1 min-h-0 flex-col sm:flex-row">
           {/* Sidebar */}
           <div className="w-full sm:w-48 shrink-0 flex flex-col border-b sm:border-b-0 sm:border-r border-gray-100 dark:border-white/[0.08] bg-gray-50/50 dark:bg-white/[0.02]">
@@ -1209,22 +1263,53 @@ export default function SettingsModal() {
             )}
 
             {activeTab === 'agent' && (
-              <AgentSettingsTab
-                draft={draft}
-                agentMaxToolRoundsInput={agentMaxToolRoundsInput}
-                agentTextProfileOptions={agentTextProfileOptions}
-                agentImageProfileOptions={agentImageProfileOptions}
-                selectedAgentTextProfile={selectedAgentTextProfile}
-                selectedAgentImageProfile={selectedAgentImageProfile}
-                setAgentMaxToolRoundsInput={setAgentMaxToolRoundsInput}
-                updateAgentApiConfigMode={updateAgentApiConfigMode}
-                commitSettings={commitSettings}
-                commitAgentMaxToolRounds={commitAgentMaxToolRounds}
-              />
+              <fieldset disabled={defaultServiceEnabled} className={`border-0 p-0 ${defaultServiceEnabled ? 'opacity-60' : ''}`}>
+                <AgentSettingsTab
+                  draft={draft}
+                  agentMaxToolRoundsInput={agentMaxToolRoundsInput}
+                  agentTextProfileOptions={agentTextProfileOptions}
+                  agentImageProfileOptions={agentImageProfileOptions}
+                  selectedAgentTextProfile={selectedAgentTextProfile}
+                  selectedAgentImageProfile={selectedAgentImageProfile}
+                  setAgentMaxToolRoundsInput={setAgentMaxToolRoundsInput}
+                  updateAgentApiConfigMode={updateAgentApiConfigMode}
+                  commitSettings={commitSettings}
+                  commitAgentMaxToolRounds={commitAgentMaxToolRounds}
+                />
+              </fieldset>
             )}
             
             {activeTab === 'api' && (
-              <div className="space-y-4">
+              <>
+                {defaultServiceEnabled && (
+                  <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-500/15 dark:bg-blue-500/[0.05]">
+                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">
+                      {activeProfile.name} · API Key
+                    </span>
+                    <div className="relative">
+                      <input
+                        value={activeProfile.apiKey}
+                        onChange={(e) => updateDefaultServiceApiKey(e.target.value)}
+                        type={showApiKey ? 'text' : 'password'}
+                        placeholder={activeProfile.provider === 'fal' ? 'FAL_KEY' : 'sk-...'}
+                        className="w-full rounded-xl border border-gray-200/70 bg-white/80 px-3 py-2.5 pr-10 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-gray-200 dark:focus:border-blue-500/50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey((value) => !value)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 transition-colors hover:text-gray-600"
+                        tabIndex={-1}
+                        aria-label={showApiKey ? '隐藏 API Key' : '显示 API Key'}
+                      >
+                        {showApiKey ? '隐藏' : '显示'}
+                      </button>
+                    </div>
+                    <div data-selectable-text className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      服务器配置中的密钥会被忽略，此密钥仅保存在当前浏览器。
+                    </div>
+                  </div>
+                )}
+                <fieldset disabled={defaultServiceEnabled} className={`space-y-4 border-0 p-0 ${defaultServiceEnabled ? 'opacity-60' : ''}`}>
                 <div>
                   <div className="mb-1.5 flex items-center gap-1.5">
                     <span className="block text-sm text-gray-600 dark:text-gray-300">当前配置</span>
@@ -1503,7 +1588,7 @@ export default function SettingsModal() {
               )}
 
               {/* 5. API Key */}
-              <div className="block">
+              {!defaultServiceEnabled && <div className="block">
                 <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API Key</span>
                 <div className="relative">
                   <input
@@ -1538,7 +1623,7 @@ export default function SettingsModal() {
                 <div data-selectable-text className="mt-1.5 text-xs text-gray-500 dark:text-gray-500">
                   支持通过查询参数覆盖：<code className="bg-gray-100 dark:bg-white/[0.06] px-1 py-0.5 rounded">?apiKey=</code>
                 </div>
-              </div>
+              </div>}
 
               {/* 6. API 接口（Images/Responses） */}
               {activeProfile.provider === 'openai' && (
@@ -1773,7 +1858,8 @@ export default function SettingsModal() {
                   />
                 </label>
               )}
-            </div>
+                </fieldset>
+              </>
             )}
             
             {activeTab === 'data' && (
@@ -1798,6 +1884,8 @@ export default function SettingsModal() {
                       checked={exportConfig}
                       onChange={setExportConfig}
                       label="包含配置"
+                      disabled={defaultServiceEnabled}
+                      className={defaultServiceEnabled ? 'opacity-50' : ''}
                     />
                     <Checkbox
                       checked={exportTasks}
@@ -1880,6 +1968,8 @@ export default function SettingsModal() {
                       onChange={setClearConfig}
                       label="包含配置"
                       tone="danger"
+                      disabled={defaultServiceEnabled}
+                      className={defaultServiceEnabled ? 'opacity-50' : ''}
                     />
                     <Checkbox
                       checked={clearTasks}

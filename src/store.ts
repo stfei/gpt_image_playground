@@ -68,6 +68,15 @@ import { ALL_FAVORITES_COLLECTION_ID, DEFAULT_FAVORITE_COLLECTION_ID, createDefa
 import { createPersistedState, mergePersistedAgentConversations, migratePersistedState, normalizePersistedState } from './lib/persistedState'
 import { addImageSizeParam, createTaskDonePatch, createTaskErrorPatch, deriveAgentImageActualParams, deriveGalleryActualParams, firstActualParams, hasActualParams, hasActualSizeParam, mapActualParamsByImage, mapRevisedPromptsByImage, markInterruptedOpenAIRunningTasks } from './lib/taskState'
 import { stripInjectedCodexCliSizePrompt } from './lib/size'
+import {
+  applyLocalPreferenceSettings,
+  applyServerSettingsApiKey,
+  getLocalPreferenceSettings,
+  hasLocalPreferenceSettingsPatch,
+  stripServerSettingsApiKeys,
+  type LocalPreferenceSettings,
+  type ServerSettingsApiKey,
+} from './lib/serverSettings'
 
 const FAL_RECOVERY_POLL_MS = 10_000
 const CUSTOM_RECOVERY_POLL_MS = 10_000
@@ -287,6 +296,14 @@ interface AppState {
   dismissedPresetProviderIds: string[]
   dismissPresetProvider: (id: string) => void
   restorePresetProvider: (id: string) => void
+  defaultServiceEnabled: boolean
+  customSettingsBackup: AppSettings | null
+  serverSettingsCache: AppSettings | null
+  defaultServiceApiKey: ServerSettingsApiKey | null
+  localPreferenceSettings: LocalPreferenceSettings
+  setDefaultServiceEnabled: (enabled: boolean) => void
+  setDefaultServiceApiKey: (value: string) => void
+  injectServerSettings: (settings: AppSettings) => void
   dismissedCodexCliPrompts: string[]
   dismissCodexCliPrompt: (key: string) => void
 
@@ -568,7 +585,7 @@ export const useStore = create<AppState>()(
       },
 
       // Settings
-      settings: { ...DEFAULT_SETTINGS },
+      settings: stripServerSettingsApiKeys(DEFAULT_SETTINGS),
       previousPresetConfig: null,
       dismissedPresetProfileIds: [],
       dismissPresetProfile: (id) => set((state) => ({
@@ -588,7 +605,33 @@ export const useStore = create<AppState>()(
       restorePresetProvider: (id) => set((state) => ({
         dismissedPresetProviderIds: state.dismissedPresetProviderIds.filter((item) => item !== id),
       })),
+      defaultServiceEnabled: true,
+      customSettingsBackup: null,
+      serverSettingsCache: null,
+      defaultServiceApiKey: null,
+      localPreferenceSettings: getLocalPreferenceSettings(DEFAULT_SETTINGS),
       setSettings: (s) => set((st) => {
+        if (st.defaultServiceEnabled) {
+          const hasPreferencePatch = hasLocalPreferenceSettingsPatch(s)
+          const hasApiKeyPatch = s.profiles === undefined && typeof s.apiKey === 'string'
+          if (!hasPreferencePatch && !hasApiKeyPatch) return {}
+
+          const localPreferenceSettings = hasPreferencePatch
+            ? getLocalPreferenceSettings(normalizeSettings({ ...st.settings, ...s }))
+            : st.localPreferenceSettings
+          const defaultServiceApiKey = hasApiKeyPatch
+            ? { value: s.apiKey ?? '' }
+            : st.defaultServiceApiKey
+          return {
+            defaultServiceApiKey,
+            localPreferenceSettings,
+            settings: applyServerSettingsApiKey(
+              applyLocalPreferenceSettings(st.serverSettingsCache ?? st.settings, localPreferenceSettings),
+              defaultServiceApiKey,
+            ),
+          }
+        }
+
         const previous = normalizeSettings(st.settings)
         const incoming = s as Partial<AppSettings>
         const hasLegacyOverrides =
@@ -629,6 +672,8 @@ export const useStore = create<AppState>()(
         const shouldClearReusedProfile = st.reusedTaskApiProfileId && settings.activeProfileId === st.reusedTaskApiProfileId
         return {
           settings,
+          customSettingsBackup: settings,
+          localPreferenceSettings: getLocalPreferenceSettings(settings),
           ...(shouldClearReusedProfile
             ? { reusedTaskApiProfileId: null, reusedTaskApiProfileName: null, reusedTaskApiProfileMissing: false }
             : {}),
@@ -636,17 +681,20 @@ export const useStore = create<AppState>()(
       }),
       setPresetImportedSettings: async (importedSettings, transform) => {
         set((state) => {
+          const sourceSettings = state.defaultServiceEnabled
+            ? state.customSettingsBackup ?? DEFAULT_SETTINGS
+            : state.settings
           const presetIds = getPresetProfileIds()
           const presetProviderIds = getPresetProviderIds()
           const dismissedPresetProfileIds = state.dismissedPresetProfileIds.filter((id) => presetIds.has(id))
           const deletionPrevented = isPresetConfigDeletionPrevented()
-          const remainingPresetProfiles = (getPresetConfig()?.profiles ?? state.settings.profiles)
+          const remainingPresetProfiles = (getPresetConfig()?.profiles ?? sourceSettings.profiles)
             .filter((profile) => !dismissedPresetProfileIds.includes(profile.id))
           const dismissedPresetProviderIds = state.dismissedPresetProviderIds
             .filter((id) => presetProviderIds.has(id))
           const effectiveDismissedPresetProviderIds = dismissedPresetProviderIds
             .filter((id) => !isPresetProviderDeletionPrevented(id, remainingPresetProfiles))
-          const merged = mergePresetImportedSettings(state.settings, importedSettings, {
+          const merged = mergePresetImportedSettings(sourceSettings, importedSettings, {
             lockPresetParams: isPresetConfigParamsLocked(),
             dismissedPresetProfileIds: deletionPrevented ? [] : dismissedPresetProfileIds,
             dismissedPresetProviderIds: effectiveDismissedPresetProviderIds,
@@ -659,7 +707,9 @@ export const useStore = create<AppState>()(
           ))
           const shouldClearReusedProfile = state.reusedTaskApiProfileId && settings.activeProfileId === state.reusedTaskApiProfileId
           return {
-            settings,
+            ...(state.defaultServiceEnabled
+              ? { customSettingsBackup: settings }
+              : { settings, customSettingsBackup: settings }),
             previousPresetConfig: getPresetConfig() ? merged.presetConfig : null,
             dismissedPresetProfileIds,
             dismissedPresetProviderIds,
@@ -670,6 +720,74 @@ export const useStore = create<AppState>()(
           }
         })
       },
+      setDefaultServiceEnabled: (defaultServiceEnabled) => set((st) => {
+        if (defaultServiceEnabled === st.defaultServiceEnabled) return {}
+
+        if (!defaultServiceEnabled) {
+          const restored = applyLocalPreferenceSettings(
+            st.customSettingsBackup ?? st.settings,
+            st.localPreferenceSettings,
+          )
+          const effectiveDismissedPresetProviderIds = st.dismissedPresetProviderIds.filter((id) =>
+            !isPresetProviderDeletionPrevented(id, restored.profiles),
+          )
+          const settings = normalizeSettings(enforcePresetConfigPolicy(restored, {
+            dismissedPresetProviderIds: effectiveDismissedPresetProviderIds,
+          }))
+          return {
+            defaultServiceEnabled,
+            customSettingsBackup: settings,
+            settings,
+          }
+        }
+
+        const customSettingsBackup = normalizeSettings(st.settings)
+        const defaultServiceApiKey = {
+          value: getActiveApiProfile(customSettingsBackup).apiKey,
+        }
+        return {
+          defaultServiceEnabled,
+          customSettingsBackup,
+          defaultServiceApiKey,
+          settings: applyServerSettingsApiKey(
+            applyLocalPreferenceSettings(st.serverSettingsCache ?? DEFAULT_SETTINGS, st.localPreferenceSettings),
+            defaultServiceApiKey,
+          ),
+          reusedTaskApiProfileId: null,
+          reusedTaskApiProfileName: null,
+          reusedTaskApiProfileMissing: false,
+        }
+      }),
+      setDefaultServiceApiKey: (value) => set((st) => {
+        if (!st.defaultServiceEnabled) return {}
+        const defaultServiceApiKey = {
+          value,
+        }
+        return {
+          defaultServiceApiKey,
+          settings: applyServerSettingsApiKey(
+            applyLocalPreferenceSettings(st.serverSettingsCache ?? st.settings, st.localPreferenceSettings),
+            defaultServiceApiKey,
+          ),
+        }
+      }),
+      injectServerSettings: (serverSettings) => set((st) => {
+        const serverSettingsCache = stripServerSettingsApiKeys(serverSettings)
+        return {
+          serverSettingsCache,
+          ...(st.defaultServiceEnabled
+            ? {
+                settings: applyServerSettingsApiKey(
+                  applyLocalPreferenceSettings(serverSettingsCache, st.localPreferenceSettings),
+                  st.defaultServiceApiKey,
+                ),
+                reusedTaskApiProfileId: null,
+                reusedTaskApiProfileName: null,
+                reusedTaskApiProfileMissing: false,
+              }
+            : {}),
+        }
+      }),
       dismissedCodexCliPrompts: [],
       dismissCodexCliPrompt: (key) => set((st) => ({
         dismissedCodexCliPrompts: st.dismissedCodexCliPrompts.includes(key)
@@ -1013,7 +1131,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'gpt-image-playground',
-      version: 2,
+      version: 4,
       migrate: migratePersistedState,
       partialize: getPersistedState,
       merge: mergePersistedState,
