@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "settings": {
+    "customProviders": [],
+    "clearInputAfterSubmit": true,
+    "persistInputOnRestart": true,
+    "reuseTaskApiProfileTemporarily": false,
+    "alwaysShowRetryButton": false,
+    "allowPromptRewrite": false,
+    "taskCompletionNotification": false,
+    "enterSubmit": false,
+    "referenceImageEditAction": "ask",
+    "zipDownloadRoutes": ["task-selection", "favorite-collection-selection"],
+    "agentScrollToBottomAfterSubmit": true,
+    "agentMaxToolRounds": 15,
+    "agentWebSearch": false,
+    "agentMathFormattingPrompt": true,
+    "agentApiConfigMode": "off",
+    "agentTextProfileId": null,
+    "agentImageProfileId": "default-openai",
+    "profiles": [
+      {
+        "id": "default-openai",
+        "name": "图片",
+        "provider": "openai",
+        "baseUrl": "http://0.0.0.0/v1",
+        "apiKey": "",
+        "model": "gpt-image-2",
+        "timeout": 600,
+        "apiMode": "images",
+        "codexCli": false,
+        "apiProxy": true,
+        "streamImages": true,
+        "streamPartialImages": 3
+      },
+      {
+        "id": "responses-api",
+        "name": "智能代理",
+        "provider": "openai",
+        "baseUrl": "http://0.0.0.0/v1",
+        "apiKey": "",
+        "model": "gpt-5.6-terra",
+        "timeout": 600,
+        "apiMode": "responses",
+        "codexCli": false,
+        "apiProxy": true,
+        "streamImages": true,
+        "streamPartialImages": 3
+      }
+    ],
+    "activeProfileId": "responses-api"
+  }
+}

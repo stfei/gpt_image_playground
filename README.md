@@ -242,6 +242,41 @@ $env:VITE_DEFAULT_API_URL="https://api.openai.com/v1"; npm run deploy:cf
 
 官方镜像已发布至 GitHub Container Registry。Docker 部署支持在运行时注入默认配置。
 
+**服务端默认设置：**
+
+应用启动时会读取同源 `/app-config.json`。设置中的“默认服务”首次默认为开启；开启后，API、习惯和 Agent 配置以该文件为准，用户只能填写服务端活动配置的 API Key。配置文件格式如下：
+
+```json
+{
+  "version": 1,
+  "settings": {
+    "profiles": [
+      {
+        "id": "default-openai",
+        "name": "默认",
+        "provider": "openai",
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "",
+        "model": "gpt-image-2",
+        "timeout": 600,
+        "apiMode": "images",
+        "codexCli": false,
+        "apiProxy": false
+      }
+    ],
+    "activeProfileId": "default-openai"
+  }
+}
+```
+
+仓库中的 `public/app-config.json` 提供完整默认示例。部署时可以替换该文件；Docker 可将自定义文件只读挂载到 `/usr/share/nginx/html/app-config.json`。服务端文件中的 API Key 会被忽略，且 profile ID 在更新配置时应保持稳定。
+
+```bash
+docker run -d -p 8080:80 \
+  -v /path/to/app-config.json:/usr/share/nginx/html/app-config.json:ro \
+  ghcr.io/cooksleep/gpt_image_playground:latest
+```
+
 **环境变量说明：**
 
 - `DEFAULT_API_URL`：设置页面上默认显示的 API 地址（如 `https://api.openai.com/v1`）。也支持填写 `.json` 配置 URL 或带 `settings` 参数的分享 URL 来导入自定义服务商配置（详见下方说明）。还支持通过 URL 查询参数预设默认配置，可用参数参考下方的：“URL 传参快速填充”：`apiUrl`、`apiKey`、`apiMode`、`model`、`profileName`、`codexCli`、`streamImages`、`streamPartialImages`。

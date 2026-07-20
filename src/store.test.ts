@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { strToU8, zipSync } from 'fflate'
 import { DEFAULT_PARAMS } from './types'
 import { createDefaultFalProfile, createDefaultOpenAIProfile, DEFAULT_RESPONSES_MODEL, DEFAULT_SETTINGS, normalizeSettings } from './lib/apiProfiles'
 import type { AgentConversation, ExportData, StoredImage, StoredImageThumbnail, TaskRecord } from './types'
 import { getSelectedImageMentionLabel } from './lib/promptImageMentions'
 import { hasActiveDataOperations } from './lib/dataOperations'
+import { getLocalPreferenceSettings } from './lib/serverSettings'
 vi.mock('./lib/db', () => {
   const tasks = new Map<string, TaskRecord>()
   const images = new Map<string, StoredImage>()
@@ -144,6 +145,213 @@ describe('error toast messages', () => {
 
   it('uses a generic message for long raw errors without a title', () => {
     expect(getErrorToastMessage(`invalid request ${'x'.repeat(90)}`)).toBe('操作失败，请查看详情')
+  })
+})
+
+describe('default service settings', () => {
+  afterEach(() => {
+    useStore.setState({
+      settings: DEFAULT_SETTINGS,
+      defaultServiceEnabled: false,
+      customSettingsBackup: null,
+      serverSettingsCache: null,
+      defaultServiceApiKey: null,
+      localPreferenceSettings: getLocalPreferenceSettings(DEFAULT_SETTINGS),
+    })
+  })
+
+  it('migrates old settings to an enabled default service with a custom backup', () => {
+    const oldProfile = createDefaultOpenAIProfile({
+      id: 'default-openai',
+      apiKey: 'old-key',
+    })
+    const oldSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      clearInputAfterSubmit: true,
+      profiles: [oldProfile],
+      activeProfileId: oldProfile.id,
+    })
+    const migrated = migratePersistedState({ settings: oldSettings }) as {
+      defaultServiceEnabled: boolean
+      customSettingsBackup: typeof oldSettings
+      defaultServiceApiKey: { value: string }
+    }
+
+    expect(migrated.defaultServiceEnabled).toBe(true)
+    expect(migrated.customSettingsBackup.clearInputAfterSubmit).toBe(true)
+    expect(migrated.defaultServiceApiKey).toEqual({ value: 'old-key' })
+  })
+
+  it('migrates a profile-bound default service key to a single local key', () => {
+    const migrated = migratePersistedState({
+      settings: DEFAULT_SETTINGS,
+      defaultServiceApiKey: { profileId: 'old-profile', value: 'old-key' },
+    }) as {
+      defaultServiceApiKey: { value: string }
+    }
+
+    expect(migrated.defaultServiceApiKey).toEqual({ value: 'old-key' })
+  })
+
+  it('restores local preferences from the custom backup when upgrading server settings', () => {
+    const serverSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      clearInputAfterSubmit: false,
+    })
+    const customSettingsBackup = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      clearInputAfterSubmit: true,
+      enterSubmit: true,
+    })
+    const migrated = migratePersistedState({
+      settings: serverSettings,
+      customSettingsBackup,
+      defaultServiceEnabled: true,
+    }) as {
+      localPreferenceSettings: {
+        clearInputAfterSubmit: boolean
+        enterSubmit: boolean
+      }
+    }
+
+    expect(migrated.localPreferenceSettings.clearInputAfterSubmit).toBe(true)
+    expect(migrated.localPreferenceSettings.enterSubmit).toBe(true)
+  })
+
+  it('injects server settings, protects non-key fields, and restores custom settings', () => {
+    const customProfile = createDefaultOpenAIProfile({
+      id: 'custom-profile',
+      apiKey: 'custom-key',
+      model: 'custom-model',
+    })
+    const customSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      clearInputAfterSubmit: true,
+      profiles: [customProfile],
+      activeProfileId: customProfile.id,
+    })
+    const serverProfile = createDefaultOpenAIProfile({
+      id: 'server-profile',
+      model: 'server-model',
+    })
+    const serverSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      clearInputAfterSubmit: false,
+      profiles: [serverProfile],
+      activeProfileId: serverProfile.id,
+    })
+
+    useStore.setState({
+      settings: customSettings,
+      defaultServiceEnabled: false,
+      customSettingsBackup: customSettings,
+      serverSettingsCache: null,
+      defaultServiceApiKey: null,
+      localPreferenceSettings: getLocalPreferenceSettings(customSettings),
+    })
+
+    useStore.getState().injectServerSettings(serverSettings)
+    expect(useStore.getState().settings.model).toBe('custom-model')
+
+    useStore.getState().setDefaultServiceEnabled(true)
+    expect(useStore.getState().settings.model).toBe('server-model')
+    expect(useStore.getState().settings.apiKey).toBe('custom-key')
+    expect(useStore.getState().settings.clearInputAfterSubmit).toBe(true)
+    expect(useStore.getState().customSettingsBackup?.model).toBe('custom-model')
+
+    useStore.getState().setSettings({ model: 'blocked-model' })
+    expect(useStore.getState().settings.model).toBe('server-model')
+
+    useStore.getState().setSettings({ clearInputAfterSubmit: false })
+    expect(useStore.getState().settings.clearInputAfterSubmit).toBe(false)
+    expect(useStore.getState().settings.model).toBe('server-model')
+
+    useStore.getState().setSettings({ apiKey: 'patched-key' })
+    expect(useStore.getState().settings.apiKey).toBe('patched-key')
+
+    useStore.getState().setSettings({ ...serverSettings, apiKey: 'imported-key' })
+    expect(useStore.getState().settings.apiKey).toBe('patched-key')
+
+    useStore.getState().setDefaultServiceApiKey('local-key')
+    expect(useStore.getState().settings.apiKey).toBe('local-key')
+    expect(useStore.getState().settings.profiles[0].apiKey).toBe('local-key')
+
+    const refreshedProfile = createDefaultOpenAIProfile({
+      id: 'refreshed-server-profile',
+      model: 'refreshed-server-model',
+    })
+    useStore.getState().injectServerSettings(normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      profiles: [refreshedProfile],
+      activeProfileId: refreshedProfile.id,
+    }))
+    expect(useStore.getState().settings.activeProfileId).toBe('refreshed-server-profile')
+    expect(useStore.getState().settings.apiKey).toBe('local-key')
+
+    useStore.getState().setDefaultServiceEnabled(false)
+    expect(useStore.getState().settings.model).toBe('custom-model')
+    expect(useStore.getState().settings.clearInputAfterSubmit).toBe(false)
+  })
+
+  it('captures the current local active key whenever the default service is enabled', () => {
+    const customProfile = createDefaultOpenAIProfile({
+      id: 'custom-profile',
+      apiKey: 'first-custom-key',
+    })
+    const customSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      profiles: [customProfile],
+      activeProfileId: customProfile.id,
+    })
+    const serverProfile = createDefaultOpenAIProfile({ id: 'server-profile' })
+    const serverSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      profiles: [serverProfile],
+      activeProfileId: serverProfile.id,
+    })
+    useStore.setState({
+      settings: customSettings,
+      defaultServiceEnabled: false,
+      customSettingsBackup: customSettings,
+      serverSettingsCache: serverSettings,
+      defaultServiceApiKey: { value: 'stale-default-key' },
+      localPreferenceSettings: getLocalPreferenceSettings(customSettings),
+    })
+
+    useStore.getState().setDefaultServiceEnabled(true)
+    expect(useStore.getState().settings.apiKey).toBe('first-custom-key')
+
+    useStore.getState().setDefaultServiceEnabled(false)
+    useStore.getState().setSettings({ apiKey: 'updated-custom-key' })
+    useStore.getState().setDefaultServiceEnabled(true)
+
+    expect(useStore.getState().defaultServiceApiKey).toEqual({ value: 'updated-custom-key' })
+    expect(useStore.getState().settings.apiKey).toBe('updated-custom-key')
+  })
+
+  it('uses current server settings as the first custom settings for a new user', () => {
+    const serverProfile = createDefaultOpenAIProfile({
+      id: 'server-profile',
+      model: 'server-start',
+    })
+    const serverSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      profiles: [serverProfile],
+      activeProfileId: serverProfile.id,
+    })
+    useStore.setState({
+      settings: serverSettings,
+      defaultServiceEnabled: true,
+      customSettingsBackup: null,
+      serverSettingsCache: serverSettings,
+      defaultServiceApiKey: null,
+      localPreferenceSettings: getLocalPreferenceSettings(serverSettings),
+    })
+
+    useStore.getState().setDefaultServiceEnabled(false)
+
+    expect(useStore.getState().settings.model).toBe('server-start')
+    expect(useStore.getState().customSettingsBackup?.model).toBe('server-start')
   })
 })
 

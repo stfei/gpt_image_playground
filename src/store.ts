@@ -57,6 +57,15 @@ import { blobToDataUrl, fileToDataUrl } from './lib/dataUrl'
 import { hasActiveDataOperations } from './lib/dataOperations'
 import { formatExportFileTime } from './lib/exportFileName'
 import { buildExportZip, createExportBlob, getExportImageEstimatedBytes, getExportZipPlan, MAX_EXPORT_ZIP_BYTES, readExportZip, readExportZipFileAsDataUrl, readExportZipManifest } from './lib/exportZip'
+import {
+  applyLocalPreferenceSettings,
+  applyServerSettingsApiKey,
+  getLocalPreferenceSettings,
+  hasLocalPreferenceSettingsPatch,
+  stripServerSettingsApiKeys,
+  type LocalPreferenceSettings,
+  type ServerSettingsApiKey,
+} from './lib/serverSettings'
 
 export const ALL_FAVORITES_COLLECTION_ID = '__all_favorites__'
 export const DEFAULT_FAVORITE_COLLECTION_ID = '__default_favorites__'
@@ -570,9 +579,28 @@ function stripPersistedAgentConversations(value: unknown): unknown {
 
 export function migratePersistedState(persistedState: unknown): unknown {
   if (!isRecord(persistedState)) return persistedState
+  const settings = normalizeSettings(persistedState.settings ?? DEFAULT_SETTINGS)
+  const activeProfile = getActiveApiProfile(settings)
+  const defaultServiceApiKey = isRecord(persistedState.defaultServiceApiKey) &&
+    typeof persistedState.defaultServiceApiKey.value === 'string'
+    ? { value: persistedState.defaultServiceApiKey.value }
+    : activeProfile.apiKey
+      ? { value: activeProfile.apiKey }
+      : null
   return {
     ...persistedState,
     agentConversations: stripPersistedAgentConversations(persistedState.agentConversations),
+    defaultServiceEnabled: typeof persistedState.defaultServiceEnabled === 'boolean'
+      ? persistedState.defaultServiceEnabled
+      : true,
+    customSettingsBackup: persistedState.customSettingsBackup ?? settings,
+    serverSettingsCache: persistedState.serverSettingsCache
+      ? stripServerSettingsApiKeys(persistedState.serverSettingsCache)
+      : null,
+    defaultServiceApiKey,
+    localPreferenceSettings: getLocalPreferenceSettings(
+      persistedState.localPreferenceSettings ?? persistedState.customSettingsBackup ?? settings,
+    ),
   }
 }
 
@@ -673,6 +701,11 @@ export function getPersistedState(state: AppState) {
   const galleryInputDraft = getPersistableGalleryInputDraft(state)
   return {
     settings,
+    defaultServiceEnabled: state.defaultServiceEnabled,
+    customSettingsBackup: state.customSettingsBackup,
+    serverSettingsCache: state.serverSettingsCache,
+    defaultServiceApiKey: state.defaultServiceApiKey,
+    localPreferenceSettings: state.localPreferenceSettings,
     params: state.params,
     ...(settings.persistInputOnRestart && (state.appMode === 'gallery' || galleryInputDraft)
       ? {
@@ -713,7 +746,27 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
   if (!persistedState || typeof persistedState !== 'object') return currentState
 
   const persisted = persistedState as Partial<AppState>
-  const settings = normalizeSettings(persisted.settings ?? currentState.settings)
+  const persistedSettings = normalizeSettings(persisted.settings ?? currentState.settings)
+  const defaultServiceEnabled = persisted.defaultServiceEnabled !== false
+  const customSettingsBackup = persisted.customSettingsBackup
+    ? normalizeSettings(persisted.customSettingsBackup)
+    : null
+  const serverSettingsCache = persisted.serverSettingsCache
+    ? stripServerSettingsApiKeys(persisted.serverSettingsCache)
+    : null
+  const defaultServiceApiKey = persisted.defaultServiceApiKey &&
+    typeof persisted.defaultServiceApiKey.value === 'string'
+    ? { value: persisted.defaultServiceApiKey.value }
+    : null
+  const localPreferenceSettings = getLocalPreferenceSettings(
+    persisted.localPreferenceSettings ?? persisted.customSettingsBackup ?? persistedSettings,
+  )
+  const settings = defaultServiceEnabled
+    ? applyServerSettingsApiKey(
+        applyLocalPreferenceSettings(serverSettingsCache ?? DEFAULT_SETTINGS, localPreferenceSettings),
+        defaultServiceApiKey,
+      )
+    : applyLocalPreferenceSettings(persistedSettings, localPreferenceSettings)
   const hasPersistedAgentConversations = Array.isArray(persisted.agentConversations)
   if (hasPersistedAgentConversations && normalizeAgentConversations(persisted.agentConversations).length > 0) {
     agentConversationMigrationPending = true
@@ -760,6 +813,11 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
     ...currentState,
     ...persisted,
     settings,
+    defaultServiceEnabled,
+    customSettingsBackup,
+    serverSettingsCache,
+    defaultServiceApiKey,
+    localPreferenceSettings,
     appMode,
     galleryInputDraft: galleryInputDraft && !isEmptyAgentInputDraft(galleryInputDraft) ? galleryInputDraft : null,
     agentConversations,
@@ -792,6 +850,14 @@ interface AppState {
   // 设置
   settings: AppSettings
   setSettings: (s: Partial<AppSettings>) => void
+  defaultServiceEnabled: boolean
+  customSettingsBackup: AppSettings | null
+  serverSettingsCache: AppSettings | null
+  defaultServiceApiKey: ServerSettingsApiKey | null
+  localPreferenceSettings: LocalPreferenceSettings
+  setDefaultServiceEnabled: (enabled: boolean) => void
+  setDefaultServiceApiKey: (value: string) => void
+  injectServerSettings: (settings: AppSettings) => void
   dismissedCodexCliPrompts: string[]
   dismissCodexCliPrompt: (key: string) => void
 
@@ -1228,8 +1294,34 @@ export const useStore = create<AppState>()(
       },
 
       // Settings
-      settings: { ...DEFAULT_SETTINGS },
+      settings: stripServerSettingsApiKeys(DEFAULT_SETTINGS),
+      defaultServiceEnabled: true,
+      customSettingsBackup: null,
+      serverSettingsCache: null,
+      defaultServiceApiKey: null,
+      localPreferenceSettings: getLocalPreferenceSettings(DEFAULT_SETTINGS),
       setSettings: (s) => set((st) => {
+        if (st.defaultServiceEnabled) {
+          const hasPreferencePatch = hasLocalPreferenceSettingsPatch(s)
+          const hasApiKeyPatch = s.profiles === undefined && typeof s.apiKey === 'string'
+          if (!hasPreferencePatch && !hasApiKeyPatch) return {}
+
+          const localPreferenceSettings = hasPreferencePatch
+            ? getLocalPreferenceSettings(normalizeSettings({ ...st.settings, ...s }))
+            : st.localPreferenceSettings
+          const defaultServiceApiKey = hasApiKeyPatch
+            ? { value: s.apiKey ?? '' }
+            : st.defaultServiceApiKey
+          return {
+            defaultServiceApiKey,
+            localPreferenceSettings,
+            settings: applyServerSettingsApiKey(
+              applyLocalPreferenceSettings(st.serverSettingsCache ?? st.settings, localPreferenceSettings),
+              defaultServiceApiKey,
+            ),
+          }
+        }
+
         const previous = normalizeSettings(st.settings)
         const incoming = s as Partial<AppSettings>
         const hasLegacyOverrides =
@@ -1265,8 +1357,71 @@ export const useStore = create<AppState>()(
         const shouldClearReusedProfile = st.reusedTaskApiProfileId && settings.activeProfileId === st.reusedTaskApiProfileId
         return {
           settings,
+          localPreferenceSettings: getLocalPreferenceSettings(settings),
           ...(shouldClearReusedProfile
             ? { reusedTaskApiProfileId: null, reusedTaskApiProfileName: null, reusedTaskApiProfileMissing: false }
+            : {}),
+        }
+      }),
+      setDefaultServiceEnabled: (defaultServiceEnabled) => set((st) => {
+        if (defaultServiceEnabled === st.defaultServiceEnabled) return {}
+
+        if (!defaultServiceEnabled) {
+          const settings = applyLocalPreferenceSettings(
+            st.customSettingsBackup ?? st.settings,
+            st.localPreferenceSettings,
+          )
+          return {
+            defaultServiceEnabled,
+            customSettingsBackup: settings,
+            settings,
+          }
+        }
+
+        const customSettingsBackup = normalizeSettings(st.settings)
+        const defaultServiceApiKey = {
+          value: getActiveApiProfile(customSettingsBackup).apiKey,
+        }
+        return {
+          defaultServiceEnabled,
+          customSettingsBackup,
+          defaultServiceApiKey,
+          settings: applyServerSettingsApiKey(
+            applyLocalPreferenceSettings(st.serverSettingsCache ?? DEFAULT_SETTINGS, st.localPreferenceSettings),
+            defaultServiceApiKey,
+          ),
+          reusedTaskApiProfileId: null,
+          reusedTaskApiProfileName: null,
+          reusedTaskApiProfileMissing: false,
+        }
+      }),
+      setDefaultServiceApiKey: (value) => set((st) => {
+        if (!st.defaultServiceEnabled) return {}
+        const defaultServiceApiKey = {
+          value,
+        }
+        return {
+          defaultServiceApiKey,
+          settings: applyServerSettingsApiKey(
+            applyLocalPreferenceSettings(st.serverSettingsCache ?? st.settings, st.localPreferenceSettings),
+            defaultServiceApiKey,
+          ),
+        }
+      }),
+      injectServerSettings: (serverSettings) => set((st) => {
+        const serverSettingsCache = stripServerSettingsApiKeys(serverSettings)
+        return {
+          serverSettingsCache,
+          ...(st.defaultServiceEnabled
+            ? {
+                settings: applyServerSettingsApiKey(
+                  applyLocalPreferenceSettings(serverSettingsCache, st.localPreferenceSettings),
+                  st.defaultServiceApiKey,
+                ),
+                reusedTaskApiProfileId: null,
+                reusedTaskApiProfileName: null,
+                reusedTaskApiProfileMissing: false,
+              }
             : {}),
         }
       }),
@@ -1623,7 +1778,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'gpt-image-playground',
-      version: 2,
+      version: 4,
       migrate: (persistedState) => migratePersistedState(persistedState),
       partialize: getPersistedState,
       merge: mergePersistedState,

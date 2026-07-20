@@ -21,8 +21,10 @@ import ImageContextMenu from './components/ImageContextMenu'
 import SupportPromptModal from './components/SupportPromptModal'
 import { FavoriteCollectionPickerModal, FavoriteCollectionsView, ManageCollectionsModal } from './components/FavoriteCollections'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
+import { loadServerSettings } from './lib/serverSettings'
 
 let customProviderConfigUrlImportStarted = false
+let serverSettingsLoadStarted = false
 
 export default function App() {
   const setSettings = useStore((s) => s.setSettings)
@@ -34,8 +36,34 @@ export default function App() {
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search)
+    const urlApiKey = searchParams.get('apiKey')
     const customProviderConfigUrl = getCustomProviderConfigUrl()
     const defaultConfigOnly = isDefaultConfigOnlyEnabled()
+
+    if (!serverSettingsLoadStarted) {
+      serverSettingsLoadStarted = true
+      void loadServerSettings()
+        .then((serverSettings) => {
+          const state = useStore.getState()
+          state.injectServerSettings(serverSettings)
+          if (urlApiKey !== null && state.defaultServiceEnabled) {
+            state.setDefaultServiceApiKey(urlApiKey.trim())
+          }
+        })
+        .catch((error) => {
+          console.warn('Failed to load server settings:', error)
+          const state = useStore.getState()
+          if (urlApiKey !== null && state.defaultServiceEnabled) {
+            state.setDefaultServiceApiKey(urlApiKey.trim())
+          }
+          state.showToast(
+            state.serverSettingsCache
+              ? '默认服务配置加载失败，已使用上次有效配置'
+              : '默认服务配置加载失败，已使用内置配置',
+            'info',
+          )
+        })
+    }
 
     const applyUrlSettings = (baseSettings: Partial<AppSettings>) => {
       const nextSettings = buildSettingsFromUrlParams(baseSettings, searchParams)
