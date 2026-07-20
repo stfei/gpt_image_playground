@@ -22,6 +22,7 @@ import ImageContextMenu from './components/ImageContextMenu'
 import SupportPromptModal from './components/SupportPromptModal'
 import { FavoriteCollectionPickerModal, FavoriteCollectionsView, ManageCollectionsModal } from './components/FavoriteCollections'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
+import { loadServerSettings } from './lib/serverSettings'
 
 let defaultConfigImportStarted = false
 
@@ -37,6 +38,7 @@ export default function App() {
     defaultConfigImportStarted = true
 
     const searchParams = new URLSearchParams(window.location.search)
+    const urlApiKey = searchParams.get('apiKey')
     const customProviderConfigUrl = getCustomProviderConfigUrl()
     const embeddedDefaultConfig = hasEmbeddedDefaultConfig()
     const loadDefaultConfig = () => embeddedDefaultConfig
@@ -52,6 +54,26 @@ export default function App() {
         : baseSettings
       const nextSettings = buildSettingsFromUrlParams(sourceSettings, searchParams)
       return Object.keys(nextSettings).length ? nextSettings : sourceSettings
+    }
+
+    const loadAndApplyServerSettings = async () => {
+      try {
+        useStore.getState().injectServerSettings(await loadServerSettings())
+      } catch (error) {
+        console.warn('Failed to load server settings:', error)
+        const state = useStore.getState()
+        state.showToast(
+          state.serverSettingsCache
+            ? '默认服务配置加载失败，已使用上次有效配置'
+            : '默认服务配置加载失败，已使用内置配置',
+          'info',
+        )
+      }
+
+      const state = useStore.getState()
+      if (urlApiKey !== null && state.defaultServiceEnabled) {
+        state.setDefaultServiceApiKey(urlApiKey.trim())
+      }
     }
 
     const clearAppliedUrlSettings = () => {
@@ -96,7 +118,7 @@ export default function App() {
         const current = useStore.getState()
         const presetIds = getPresetProfileIds()
         const defaultPresetId = getDefaultPresetProfileId()
-        const settings = isPresetConfigOnlyEnabled()
+        const settings = !current.defaultServiceEnabled && isPresetConfigOnlyEnabled()
           ? normalizeSettings({
               ...current.settings,
               activeProfileId: presetIds.has(current.settings.activeProfileId)
@@ -112,6 +134,7 @@ export default function App() {
           : current.settings
         current.setSettings(await applyUrlSettings(settings))
         clearAppliedUrlSettings()
+        await loadAndApplyServerSettings()
       })
       .catch((error) => {
         console.warn('Failed to import preset config:', error)
@@ -120,6 +143,7 @@ export default function App() {
         void applyUrlSettings(state.settings).then((settings) => {
           useStore.getState().setSettings(settings)
           clearAppliedUrlSettings()
+          return loadAndApplyServerSettings()
         })
       })
   }, [])

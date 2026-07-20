@@ -153,6 +153,7 @@ describe('preset config policy', () => {
     policy.setPresetConfig(preset)
     useStore.setState({
       settings: normalizeSettings({ ...DEFAULT_SETTINGS, customProviders: [], profiles: [] }),
+      defaultServiceEnabled: false,
       dismissedPresetProviderIds: [provider.id],
     })
 

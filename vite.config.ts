@@ -45,7 +45,7 @@ export default defineConfig(async ({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const defaultApiUrl = await embedDefaultConfig(process.env.VITE_DEFAULT_API_URL ?? env.VITE_DEFAULT_API_URL ?? '')
   if (defaultApiUrl.startsWith('embedded-config:')) process.env.VITE_DEFAULT_API_URL = defaultApiUrl
-  const devProxyConfig = command === 'serve' ? loadDevProxyConfig() : null
+  const devProxyConfig = command === 'serve' && mode !== 'test' ? loadDevProxyConfig() : null
 
   return {
     plugins: [react()],
