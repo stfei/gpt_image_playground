@@ -1,0 +1,21 @@
+services:
+  app:
+    image: ${IMAGE_NAME:-gpt-image-playground}:${IMAGE_TAG:-dist}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dist
+    container_name: ${CONTAINER_NAME:-gpt-image-playground}
+    restart: unless-stopped
+    ports:
+      - '${APP_PORT:-8080}:80'
+    environment:
+      DEFAULT_API_URL: ${DEFAULT_API_URL:-}
+      API_PROXY_URL: ${API_PROXY_URL:-http://192.168.0.51:18181/v1}
+      ENABLE_API_PROXY: ${ENABLE_API_PROXY:-true}
+      LOCK_API_PROXY: ${LOCK_API_PROXY:-false}
+      SHOW_DEFAULT_CONFIG_ONLY: ${SHOW_DEFAULT_CONFIG_ONLY:-false}
+    volumes:
+      - type: bind
+        source: ${APP_CONFIG_PATH:-../public/app-config.json}
+        target: /usr/share/nginx/html/app-config.json
+        read_only: true
