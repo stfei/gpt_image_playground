@@ -1,0 +1,8 @@
+*
+!dist/
+!dist/**
+!deploy/
+!deploy/Dockerfile.dist
+!deploy/nginx.conf
+!deploy/migrate-api-env.envsh
+!deploy/inject-api-url.sh
