@@ -356,6 +356,15 @@ docker run -d -p 8080:80 \
   ghcr.io/cooksleep/gpt_image_playground:latest
 ```
 
+若要使用当前工作区已经构建的 `dist/` 创建镜像，可运行 `deploy/build-dist-image.ps1`。Compose 默认不启用 API 代理，也不内置上游地址；需要代理时必须显式设置完整的 `API_PROXY_URL`：
+
+```powershell
+$env:ENABLE_API_PROXY='true'
+$env:API_PROXY_URL='https://api.openai.com/v1'
+$env:APP_CONFIG_PATH='D:\config\app-config.json'
+.\deploy\build-dist-image.ps1 -SkipInstall
+```
+
 **环境变量：**
 
 | 变量 | 说明 |
