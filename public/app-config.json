@@ -47,10 +47,10 @@
         "timeout": 600,
         "apiMode": "responses",
         "reasoningEffort": "medium",
-        "codexCli": false,
+        "codexCli": true,
         "apiProxy": true,
         "responseFormatB64Json": false,
-        "streamImages": true,
+        "streamImages": false,
         "streamPartialImages": 3,
         "transparentBackgroundMethod": "api"
       }
