@@ -303,6 +303,7 @@ interface AppState {
   localPreferenceSettings: LocalPreferenceSettings
   setDefaultServiceEnabled: (enabled: boolean) => void
   setDefaultServiceApiKey: (value: string) => void
+  setDefaultServiceActiveProfile: (id: string) => void
   injectServerSettings: (settings: AppSettings) => void
   dismissedCodexCliPrompts: string[]
   dismissCodexCliPrompt: (key: string) => void
@@ -771,8 +772,29 @@ export const useStore = create<AppState>()(
           ),
         }
       }),
+      setDefaultServiceActiveProfile: (id) => set((st) => {
+        if (!st.defaultServiceEnabled || !st.serverSettingsCache?.profiles.some((profile) => profile.id === id)) return {}
+        const serverSettingsCache = stripServerSettingsApiKeys({
+          ...st.serverSettingsCache,
+          activeProfileId: id,
+        })
+        return {
+          serverSettingsCache,
+          settings: applyServerSettingsApiKey(
+            applyLocalPreferenceSettings(serverSettingsCache, st.localPreferenceSettings),
+            st.defaultServiceApiKey,
+          ),
+          reusedTaskApiProfileId: null,
+          reusedTaskApiProfileName: null,
+          reusedTaskApiProfileMissing: false,
+        }
+      }),
       injectServerSettings: (serverSettings) => set((st) => {
-        const serverSettingsCache = stripServerSettingsApiKeys(serverSettings)
+        const incomingServerSettings = stripServerSettingsApiKeys(serverSettings)
+        const selectedProfileId = st.serverSettingsCache?.activeProfileId
+        const serverSettingsCache = selectedProfileId && incomingServerSettings.profiles.some((profile) => profile.id === selectedProfileId)
+          ? stripServerSettingsApiKeys({ ...incomingServerSettings, activeProfileId: selectedProfileId })
+          : incomingServerSettings
         return {
           serverSettingsCache,
           ...(st.defaultServiceEnabled
