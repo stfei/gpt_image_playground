@@ -166,6 +166,7 @@ export default function SettingsModal() {
   const serverSettingsCache = useStore((s) => s.serverSettingsCache)
   const setDefaultServiceEnabled = useStore((s) => s.setDefaultServiceEnabled)
   const setDefaultServiceApiKey = useStore((s) => s.setDefaultServiceApiKey)
+  const setDefaultServiceActiveProfile = useStore((s) => s.setDefaultServiceActiveProfile)
   const reusedTaskApiProfileId = useStore((s) => s.reusedTaskApiProfileId)
   const setReusedTaskApiProfile = useStore((s) => s.setReusedTaskApiProfile)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
@@ -232,7 +233,9 @@ export default function SettingsModal() {
   const visibleProfiles = managedPresetConfigOnly && !defaultServiceEnabled
     ? draft.profiles.filter((profile) => presetProfileIds.has(profile.id))
     : draft.profiles
-  const profileMenuDisabled = presetConfigOnly && visibleProfiles.length <= 1
+  const profileMenuDisabled = defaultServiceEnabled
+    ? !serverSettingsCache || visibleProfiles.length <= 1
+    : managedPresetConfigOnly && visibleProfiles.length <= 1
   const defaultProfileId = defaultServiceEnabled
     ? getDefaultApiProfileId(draft)
     : getDefaultPresetProfileId() ?? getDefaultApiProfileId(draft)
@@ -775,6 +778,14 @@ export default function SettingsModal() {
   }
 
   const switchProfile = (id: string) => {
+    if (defaultServiceEnabled) {
+      setDefaultServiceActiveProfile(id)
+      const nextDraft = normalizeSettings(useStore.getState().settings)
+      setDraft(nextDraft)
+      setTimeoutInput(String(getActiveApiProfile(nextDraft).timeout))
+      setShowProfileMenu(false)
+      return
+    }
     if (presetConfigOnly && !presetProfileIds.has(id)) return
     setReusedTaskApiProfile(null)
     const nextDraft = normalizeSettings({ ...draft, activeProfileId: id })
@@ -1177,7 +1188,7 @@ export default function SettingsModal() {
               <div data-selectable-text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                 {defaultServiceEnabled
                   ? serverSettingsCache
-                    ? '正在使用服务器下发的配置，仅 API Key 可修改。'
+                    ? '正在使用服务器下发的配置，可切换当前配置并修改 API Key。'
                     : '正在使用内置配置，服务器配置加载成功后会自动更新。'
                   : '已关闭，正在使用浏览器本地自定义配置。'}
               </div>
@@ -1309,11 +1320,10 @@ export default function SettingsModal() {
                     </div>
                   </div>
                 )}
-                <fieldset disabled={defaultServiceEnabled} className={`space-y-4 border-0 p-0 ${defaultServiceEnabled ? 'opacity-60' : ''}`}>
-                <div>
+                <div className="mb-4">
                   <div className="mb-1.5 flex items-center gap-1.5">
                     <span className="block text-sm text-gray-600 dark:text-gray-300">当前配置</span>
-                    <span className="relative inline-flex">
+                    {!defaultServiceEnabled && <span className="relative inline-flex">
                       <button
                         type="button"
                         onClick={() => confirmCopyProfileImportUrl(activeProfile)}
@@ -1338,7 +1348,7 @@ export default function SettingsModal() {
                       <ViewportTooltip visible={profileImportUrlTooltipVisible} className="whitespace-nowrap">
                         复制导入 URL
                       </ViewportTooltip>
-                    </span>
+                    </span>}
                     {!presetConfigOnly && <span className="relative inline-flex">
                       <button
                         type="button"
@@ -1457,7 +1467,7 @@ export default function SettingsModal() {
                                 </div>
                                 
                                 <div className="flex shrink-0 items-center gap-1">
-                                  <button
+                                  {!defaultServiceEnabled && <button
                                     type="button"
                                     onClick={(e) => {
                                       e.preventDefault()
@@ -1469,7 +1479,7 @@ export default function SettingsModal() {
                                     title="复制导入 URL"
                                   >
                                     <LinkIcon className="h-3.5 w-3.5" />
-                                  </button>
+                                  </button>}
                                   {!presetConfigOnly && (isDefaultProfile || draft.profiles.length > 1) && (
                                     <TooltipButton
                                       tooltip={isPresetProfile && presetDeletionPrevented ? '预置配置不可删除' : '删除配置'}
@@ -1509,6 +1519,7 @@ export default function SettingsModal() {
                   )}
                 </div>
 
+              <fieldset disabled={defaultServiceEnabled} className={`space-y-4 border-0 p-0 ${defaultServiceEnabled ? 'opacity-60' : ''}`}>
               {/* 1. 配置名称 */}
               <label className="block">
                 <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">配置名称</span>

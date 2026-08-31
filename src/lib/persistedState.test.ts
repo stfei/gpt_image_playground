@@ -148,10 +148,15 @@ describe('persisted state codec', () => {
   })
 
   it('round-trips default service state without persisting server API keys', () => {
-    const serverProfile = createDefaultOpenAIProfile({
-      id: 'server-profile',
+    const firstServerProfile = createDefaultOpenAIProfile({
+      id: 'server-first',
+      apiKey: 'server-secret-first',
+      model: 'server-model-first',
+    })
+    const selectedServerProfile = createDefaultOpenAIProfile({
+      id: 'server-selected',
       description: '服务器下发说明',
-      apiKey: 'server-secret',
+      apiKey: 'server-secret-selected',
       model: 'server-model',
       apiMode: 'responses',
       reasoningEffort: 'medium',
@@ -160,8 +165,8 @@ describe('persisted state codec', () => {
     })
     const serverSettings = normalizeSettings({
       ...DEFAULT_SETTINGS,
-      profiles: [serverProfile],
-      activeProfileId: serverProfile.id,
+      profiles: [firstServerProfile, selectedServerProfile],
+      activeProfileId: selectedServerProfile.id,
     })
     const customProfile = createDefaultOpenAIProfile({
       id: 'custom-profile',
@@ -184,8 +189,9 @@ describe('persisted state codec', () => {
     })
 
     expect(encoded.serverSettingsCache?.apiKey).toBe('')
-    expect(encoded.serverSettingsCache?.profiles[0].apiKey).toBe('')
-    expect(encoded.serverSettingsCache?.profiles[0]).toMatchObject({
+    expect(encoded.serverSettingsCache?.activeProfileId).toBe(selectedServerProfile.id)
+    expect(encoded.serverSettingsCache?.profiles.every((profile) => profile.apiKey === '')).toBe(true)
+    expect(encoded.serverSettingsCache?.profiles[1]).toMatchObject({
       description: '服务器下发说明',
       reasoningEffort: 'medium',
       responseFormatB64Json: true,
@@ -196,9 +202,11 @@ describe('persisted state codec', () => {
     const result = normalizePersistedState(encoded, fallback(), 100)!
 
     expect(result.state.defaultServiceEnabled).toBe(true)
+    expect(result.state.settings.activeProfileId).toBe(selectedServerProfile.id)
     expect(result.state.settings.model).toBe('server-model')
     expect(result.state.settings.apiKey).toBe('local-key')
-    expect(result.state.settings.profiles[0]).toMatchObject({
+    expect(result.state.settings.profiles.map((profile) => profile.apiKey)).toEqual(['', 'local-key'])
+    expect(result.state.settings.profiles[1]).toMatchObject({
       description: '服务器下发说明',
       reasoningEffort: 'medium',
       responseFormatB64Json: true,
