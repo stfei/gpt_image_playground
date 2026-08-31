@@ -28,10 +28,10 @@
         "model": "gpt-image-2",
         "timeout": 600,
         "apiMode": "images",
-        "codexCli": false,
+        "codexCli": true,
         "apiProxy": true,
         "responseFormatB64Json": false,
-        "streamImages": true,
+        "streamImages": false,
         "streamPartialImages": 3,
         "transparentBackgroundMethod": "api"
       },
