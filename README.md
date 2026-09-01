@@ -184,6 +184,8 @@
 | 构建时变量 (Vercel/CF/本地) | Docker 运行变量 | 功能说明 |
 |------|------|------|
 | `VITE_DEFAULT_API_URL` | `DEFAULT_API_URL` | 设定预置配置值（支持 URL 形式或 JSON 格式，详见 [预置配置 JSON 格式](#preset-config-json)） |
+| `VITE_API_PROXY_AVAILABLE=true` | `ENABLE_API_PROXY=true` | 告知前端部署端提供同源 `/api-proxy/`；Docker 变量还会保留 Nginx 代理路由 |
+| `VITE_API_PROXY_LOCKED=true` | `LOCK_API_PROXY=true` | 强制前端使用 API 代理并禁止关闭；必须同时启用代理可用变量 |
 | `VITE_LOCK_PRESET_CONFIG_PARAMS=true` | `LOCK_PRESET_CONFIG_PARAMS=true` | 锁定预置配置中除 API Key 外的参数，并禁止编辑预置供应商定义；当前锁定配置引用的供应商不可删除，解除引用后可删除 |
 | `VITE_PREVENT_PRESET_CONFIG_DELETION=true` | `PREVENT_PRESET_CONFIG_DELETION=true` | 禁止删除预置配置和预置供应商，不锁定参数；普通项不受影响 |
 | `VITE_SHOW_PRESET_CONFIG_ONLY=true` | `SHOW_PRESET_CONFIG_ONLY=true` | 只允许使用当前预置配置，禁止创建、复制、删除、拖动、切换供应商和管理自定义供应商；未同时开启锁定时参数仍可编辑，API Key 始终可编辑 |
@@ -196,6 +198,22 @@
 > - **失效供应商清理**：随预置引入的自定义供应商在不再被任何配置使用、且从未被用户修改时，也会自动清理。
 
 > 兼容提示：旧变量 `VITE_SHOW_DEFAULT_CONFIG_ONLY`／`SHOW_DEFAULT_CONFIG_ONLY` 仍可使用，等同于对应的 `SHOW_PRESET_CONFIG_ONLY`。
+
+### 使用 `npm run build` 编译支持代理的前端
+
+直接构建静态 `dist/` 时，需要在执行 `npm run build` 前设置 Vite 构建变量。仅设置 Docker 运行变量 `ENABLE_API_PROXY` 不会影响 Vite 编译结果。
+
+PowerShell：
+
+```powershell
+$env:VITE_API_PROXY_AVAILABLE='true'
+$env:VITE_API_PROXY_LOCKED='false'
+npm run build
+```
+
+构建产物会显示“API 代理”设置；配置中启用 `apiProxy` 后，前端请求同源 `/api-proxy/{路径}`。若要强制所有兼容配置使用代理，将 `VITE_API_PROXY_LOCKED` 改为 `true`。静态文件服务器仍需自行配置 `/api-proxy/` 反向代理，否则该路径无法转发到上游 API。
+
+以上变量会固化到本次构建产物，修改后必须重新构建。重新部署相同版本后若页面仍使用旧设置，请清除站点缓存或使用无痕窗口验证。
 
 ### 部署方式
 
@@ -356,7 +374,7 @@ docker run -d -p 8080:80 \
   ghcr.io/cooksleep/gpt_image_playground:latest
 ```
 
-若要使用当前工作区已经构建的 `dist/` 创建镜像，可运行 `deploy/build-dist-image.ps1`。Compose 默认不启用 API 代理，也不内置上游地址；需要代理时必须显式设置完整的 `API_PROXY_URL`：
+若要使用当前工作区构建 `dist/` 并创建镜像，可运行 `deploy/build-dist-image.ps1`。该脚本会自动使用运行时占位符执行 `npm run build`，因此无需手动设置 `VITE_API_PROXY_AVAILABLE`。Compose 默认不启用 API 代理，也不内置上游地址；需要代理时必须在同一个 PowerShell 会话中显式设置完整的 `API_PROXY_URL`：
 
 ```powershell
 $env:ENABLE_API_PROXY='true'
