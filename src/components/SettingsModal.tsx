@@ -1463,7 +1463,7 @@ export default function SettingsModal() {
                                   </div>
                                   
                                   <div className="flex shrink-0 items-center gap-1">
-                                    <button
+                                    {!defaultServiceEnabled && <button
                                       type="button"
                                       onClick={(e) => {
                                         e.preventDefault()

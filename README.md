@@ -184,6 +184,23 @@ npm run tauri:build
 
 </details>
 
+### 使用 `npm run build` 编译支持代理的前端
+
+直接构建静态 `dist/` 时，需要在执行 `npm run build` 前设置 Vite 构建变量。仅设置 Docker 运行变量 `ENABLE_API_PROXY` 不会影响 Vite 编译结果。
+
+PowerShell：
+
+```powershell
+$env:VITE_API_PROXY_AVAILABLE='true'
+$env:VITE_API_PROXY_LOCKED='false'
+npm run build
+```
+
+构建产物会显示“API 代理”设置；配置中启用 `apiProxy` 后，前端请求同源 `/api-proxy/{路径}`。若要强制所有兼容配置使用代理，将 `VITE_API_PROXY_LOCKED` 改为 `true`。静态文件服务器仍需自行配置 `/api-proxy/` 反向代理，否则该路径无法转发到上游 API。
+
+以上变量会固化到本次构建产物，修改后必须重新构建。重新部署相同版本后若页面仍使用旧设置，请清除站点缓存或使用无痕窗口验证。
+
+
 <details>
 <summary><strong>▲ 方式二：Vercel 一键部署（网页版推荐）</strong></summary>
 
@@ -323,7 +340,7 @@ docker run -d -p 8080:80 \
   ghcr.io/cooksleep/gpt_image_playground:latest
 ```
 
-若要使用当前工作区已经构建的 `dist/` 创建镜像，可运行 `deploy/build-dist-image.ps1`。Compose 默认不启用 API 代理，也不内置上游地址；需要代理时必须显式设置完整的 `API_PROXY_URL`：
+若要使用当前工作区构建 `dist/` 并创建镜像，可运行 `deploy/build-dist-image.ps1`。该脚本会自动使用运行时占位符执行 `npm run build`，因此无需手动设置 `VITE_API_PROXY_AVAILABLE`。Compose 默认不启用 API 代理，也不内置上游地址；需要代理时必须在同一个 PowerShell 会话中显式设置完整的 `API_PROXY_URL`：
 
 ```powershell
 $env:ENABLE_API_PROXY='true'
