@@ -1316,7 +1316,7 @@ export default function SettingsModal() {
                       </button>
                     </div>
                     <div data-selectable-text className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      服务器配置中的密钥会被忽略，此密钥仅保存在当前浏览器。
+                      服务器配置中的密钥会被忽略；此密钥仅保存在当前浏览器，并用于当前配置及服务器指定的 Agent 配置。
                     </div>
                   </div>
                 )}

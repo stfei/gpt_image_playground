@@ -45,11 +45,19 @@ export function applyServerSettingsApiKey(
   const normalized = stripServerSettingsApiKeys(settings)
   if (!apiKey) return normalized
 
+  const apiKeyProfileIds = new Set([normalized.activeProfileId])
+  if (normalized.agentApiConfigMode !== 'off' && normalized.agentTextProfileId) {
+    apiKeyProfileIds.add(normalized.agentTextProfileId)
+  }
+  if (normalized.agentApiConfigMode === 'hybrid' && normalized.agentImageProfileId) {
+    apiKeyProfileIds.add(normalized.agentImageProfileId)
+  }
+
   return normalizeSettings({
     ...normalized,
     apiKey: apiKey.value,
     profiles: normalized.profiles.map((profile) =>
-      profile.id === normalized.activeProfileId
+      apiKeyProfileIds.has(profile.id)
         ? { ...profile, apiKey: apiKey.value }
         : profile,
     ),

@@ -8,6 +8,7 @@ import {
   loadServerSettings,
   parseServerSettingsConfig,
   SERVER_SETTINGS_URL,
+  stripServerSettingsApiKeys,
 } from './serverSettings'
 
 function config() {
@@ -18,6 +19,7 @@ function config() {
     baseUrl: 'https://server.example/v1',
     apiKey: 'server-secret',
     model: 'server-model',
+    imageGenerationModel: 'server-image-model',
     timeout: 123,
     apiMode: 'responses',
     reasoningEffort: 'medium',
@@ -43,9 +45,12 @@ describe('server settings', () => {
     const profile = settings.profiles.find((item) => item.id === settings.activeProfileId)
 
     expect(settings.activeProfileId).toBe('responses-api')
+    expect(settings.agentApiConfigMode).toBe('native')
+    expect(settings.agentTextProfileId).toBe('responses-api')
     expect(profile).toMatchObject({
       isDefault: true,
       description: '用于智能代理对话与工具调用。',
+      imageGenerationModel: 'gpt-image-2',
       reasoningEffort: 'medium',
       transparentBackgroundMethod: 'api',
       apiKey: '',
@@ -59,6 +64,7 @@ describe('server settings', () => {
     expect(settings.activeProfileId).toBe('server-profile')
     expect(settings.baseUrl).toBe('https://server.example/v1')
     expect(settings.model).toBe('server-model')
+    expect(settings.profiles[0].imageGenerationModel).toBe('server-image-model')
     expect(settings.timeout).toBe(123)
     expect(settings.apiMode).toBe('responses')
     expect(settings.profiles[0].isDefault).toBe(true)
@@ -81,6 +87,7 @@ describe('server settings', () => {
     const settings = parseServerSettingsConfig(document)
 
     expect(settings.profiles[0].reasoningEffort).toBeUndefined()
+    expect(settings.profiles[0].imageGenerationModel).toBe('server-image-model')
     expect(settings.profiles[0].responseFormatB64Json).toBe(true)
     expect(settings.profiles[0].transparentBackgroundMethod).toBe('local')
   })
@@ -135,8 +142,48 @@ describe('server settings', () => {
     expect(applied.profiles[0].apiKey).toBe('local-key')
     expect(applied.profiles[1].apiKey).toBe('')
     expect(applied.profiles[0].reasoningEffort).toBe('medium')
+    expect(applied.profiles[0].imageGenerationModel).toBe('server-image-model')
     expect(applied.profiles[0].responseFormatB64Json).toBe(true)
     expect(applied.profiles[0].transparentBackgroundMethod).toBe('local')
+  })
+
+  it('applies the shared local key to active and configured Agent profiles', () => {
+    const document = config()
+    document.settings.profiles[0].id = 'agent-text'
+    document.settings.profiles[0].isDefault = undefined
+    const activeProfile = createDefaultOpenAIProfile({
+      id: 'active-image',
+      isDefault: true,
+      apiMode: 'images',
+      apiKey: 'active-server-secret',
+    })
+    const agentImageProfile = createDefaultOpenAIProfile({
+      id: 'agent-image',
+      apiMode: 'images',
+      apiKey: 'agent-image-server-secret',
+    })
+    const unusedProfile = createDefaultOpenAIProfile({
+      id: 'unused',
+      apiKey: 'unused-server-secret',
+    })
+    document.settings.profiles.push(activeProfile, agentImageProfile, unusedProfile)
+    Object.assign(document.settings, {
+      activeProfileId: activeProfile.id,
+      agentApiConfigMode: 'hybrid',
+      agentTextProfileId: 'agent-text',
+      agentImageProfileId: agentImageProfile.id,
+    })
+
+    const settings = parseServerSettingsConfig(document)
+    const applied = applyServerSettingsApiKey(settings, { value: 'local-key' })
+
+    expect(applied.profiles.map((profile) => [profile.id, profile.apiKey])).toEqual([
+      ['agent-text', 'local-key'],
+      ['active-image', 'local-key'],
+      ['agent-image', 'local-key'],
+      ['unused', ''],
+    ])
+    expect(stripServerSettingsApiKeys(applied).profiles.every((profile) => profile.apiKey === '')).toBe(true)
   })
 
   it('keeps local preference settings separate from server settings', () => {

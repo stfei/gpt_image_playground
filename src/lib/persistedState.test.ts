@@ -158,6 +158,7 @@ describe('persisted state codec', () => {
       description: '服务器下发说明',
       apiKey: 'server-secret-selected',
       model: 'server-model',
+      imageGenerationModel: 'server-image-model',
       apiMode: 'responses',
       reasoningEffort: 'medium',
       responseFormatB64Json: true,
@@ -193,6 +194,7 @@ describe('persisted state codec', () => {
     expect(encoded.serverSettingsCache?.profiles.every((profile) => profile.apiKey === '')).toBe(true)
     expect(encoded.serverSettingsCache?.profiles[1]).toMatchObject({
       description: '服务器下发说明',
+      imageGenerationModel: 'server-image-model',
       reasoningEffort: 'medium',
       responseFormatB64Json: true,
       transparentBackgroundMethod: 'local',
@@ -208,12 +210,49 @@ describe('persisted state codec', () => {
     expect(result.state.settings.profiles.map((profile) => profile.apiKey)).toEqual(['', 'local-key'])
     expect(result.state.settings.profiles[1]).toMatchObject({
       description: '服务器下发说明',
+      imageGenerationModel: 'server-image-model',
       reasoningEffort: 'medium',
       responseFormatB64Json: true,
       transparentBackgroundMethod: 'local',
     })
     expect(result.state.settings.clearInputAfterSubmit).toBe(true)
     expect(result.state.customSettingsBackup?.model).toBe('custom-model')
+  })
+
+  it('restores the shared key for server-selected Agent profiles without adding it to the cache', () => {
+    const activeProfile = createDefaultOpenAIProfile({ id: 'active-image', apiMode: 'images' })
+    const agentTextProfile = createDefaultOpenAIProfile({
+      id: 'agent-text',
+      apiMode: 'responses',
+      imageGenerationModel: 'server-image-model',
+    })
+    const agentImageProfile = createDefaultOpenAIProfile({ id: 'agent-image', apiMode: 'images' })
+    const serverSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      profiles: [activeProfile, agentTextProfile, agentImageProfile],
+      activeProfileId: activeProfile.id,
+      agentApiConfigMode: 'hybrid',
+      agentTextProfileId: agentTextProfile.id,
+      agentImageProfileId: agentImageProfile.id,
+    })
+    const encoded = createPersistedState({
+      ...source(serverSettings),
+      defaultServiceEnabled: true,
+      customSettingsBackup: null,
+      serverSettingsCache: serverSettings,
+      defaultServiceApiKey: { value: 'local-key' },
+      localPreferenceSettings: getLocalPreferenceSettings(DEFAULT_SETTINGS),
+    })
+
+    const result = normalizePersistedState(encoded, fallback(), 100)!
+
+    expect(result.state.serverSettingsCache?.profiles.every((profile) => profile.apiKey === '')).toBe(true)
+    expect(result.state.settings.profiles.map((profile) => [profile.id, profile.apiKey])).toEqual([
+      ['active-image', 'local-key'],
+      ['agent-text', 'local-key'],
+      ['agent-image', 'local-key'],
+    ])
+    expect(result.state.settings.profiles[1].imageGenerationModel).toBe('server-image-model')
   })
 
   it('normalizes legacy conversations, active ID, and top-level Agent draft fallback', () => {
