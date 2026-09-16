@@ -43,14 +43,23 @@ describe('server settings', () => {
   it('loads the repository app config with the active profile fields', () => {
     const settings = parseServerSettingsConfig(appConfig)
     const profile = settings.profiles.find((item) => item.id === settings.activeProfileId)
+    const agentTextProfile = settings.profiles.find((item) => item.id === settings.agentTextProfileId)
 
-    expect(settings.activeProfileId).toBe('responses-api')
-    expect(settings.agentApiConfigMode).toBe('native')
+    expect(settings.activeProfileId).toBe('default-openai')
+    expect(settings.agentApiConfigMode).toBe('hybrid')
     expect(settings.agentTextProfileId).toBe('responses-api')
+    expect(settings.agentImageProfileId).toBe('default-openai')
     expect(profile).toMatchObject({
       isDefault: true,
+      description: '用于图片生成与编辑。',
+      model: 'gpt-image-2.5-sunburst',
+      apiMode: 'images',
+      transparentBackgroundMethod: 'api',
+      apiKey: '',
+    })
+    expect(agentTextProfile).toMatchObject({
       description: '用于智能代理对话与工具调用。',
-      imageGenerationModel: 'gpt-image-2',
+      imageGenerationModel: 'gpt-image-2.5-sunburst',
       reasoningEffort: 'medium',
       transparentBackgroundMethod: 'api',
       apiKey: '',

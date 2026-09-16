@@ -21,6 +21,7 @@ import {
   findEquivalentApiProfile,
   getApiProviderLabel,
   getActiveApiProfile,
+  getAgentTextApiProfile,
   getCustomProviderDefinition,
   importCustomProviderSettingsFromJson,
   getDefaultApiProfileId,
@@ -173,6 +174,7 @@ export default function SettingsModal() {
   const settingsTabRequest = useStore((s) => s.settingsTabRequest)
   const setShowSettings = useStore((s) => s.setShowSettings)
   const settings = useStore((s) => s.settings)
+  const appMode = useStore((s) => s.appMode)
   const setSettings = useStore((s) => s.setSettings)
   const dismissPresetProfile = useStore((s) => s.dismissPresetProfile)
   const dismissPresetProvider = useStore((s) => s.dismissPresetProvider)
@@ -181,7 +183,6 @@ export default function SettingsModal() {
   const serverSettingsCache = useStore((s) => s.serverSettingsCache)
   const setDefaultServiceEnabled = useStore((s) => s.setDefaultServiceEnabled)
   const setDefaultServiceApiKey = useStore((s) => s.setDefaultServiceApiKey)
-  const setDefaultServiceActiveProfile = useStore((s) => s.setDefaultServiceActiveProfile)
   const reusedTaskApiProfileId = useStore((s) => s.reusedTaskApiProfileId)
   const setReusedTaskApiProfile = useStore((s) => s.setReusedTaskApiProfile)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
@@ -254,13 +255,14 @@ export default function SettingsModal() {
   const visibleProfiles = managedPresetConfigOnly && !defaultServiceEnabled
     ? draft.profiles.filter((profile) => presetProfileIds.has(profile.id))
     : draft.profiles
-  const profileMenuDisabled = defaultServiceEnabled
-    ? !serverSettingsCache || visibleProfiles.length <= 1
-    : managedPresetConfigOnly && visibleProfiles.length <= 1
+  const profileMenuDisabled = defaultServiceEnabled || (managedPresetConfigOnly && visibleProfiles.length <= 1)
   const defaultProfileId = defaultServiceEnabled
     ? getDefaultApiProfileId(draft)
     : getDefaultPresetProfileId() ?? getDefaultApiProfileId(draft)
-  const activeProfile = draft.profiles.find((profile) => profile.id === draft.activeProfileId) ?? draft.profiles[0] ?? getActiveApiProfile(draft)
+  const settingsActiveProfile = draft.profiles.find((profile) => profile.id === draft.activeProfileId) ?? draft.profiles[0] ?? getActiveApiProfile(draft)
+  const activeProfile = defaultServiceEnabled && appMode === 'agent'
+    ? getAgentTextApiProfile(draft) ?? settingsActiveProfile
+    : settingsActiveProfile
   const activePresetDescription = defaultServiceEnabled ? undefined : getPresetProfileDescription(activeProfile.id)
   const activeProfileLocked = defaultServiceEnabled || isPresetProfileLocked(activeProfile.id)
   const activeProviderIsOpenAICompatible = isOpenAICompatibleProvider(draft, activeProfile.provider)
@@ -771,14 +773,6 @@ export default function SettingsModal() {
   }
 
   const switchProfile = (id: string) => {
-    if (defaultServiceEnabled) {
-      setDefaultServiceActiveProfile(id)
-      const nextDraft = normalizeSettings(useStore.getState().settings)
-      setDraft(nextDraft)
-      setTimeoutInput(String(getActiveApiProfile(nextDraft).timeout))
-      setShowProfileMenu(false)
-      return
-    }
     if (presetConfigOnly && !presetProfileIds.has(id)) return
     setReusedTaskApiProfile(null)
     const nextDraft = normalizeSettings({ ...draft, activeProfileId: id })
@@ -1162,7 +1156,7 @@ export default function SettingsModal() {
               <div data-selectable-text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                 {defaultServiceEnabled
                   ? serverSettingsCache
-                    ? '正在使用服务器下发的配置，可切换当前配置并修改 API Key。'
+                    ? '正在使用服务器下发的配置，将根据画廊或 Agent 模式自动选择当前配置。'
                     : '正在使用内置配置，服务器配置加载成功后会自动更新。'
                   : '已关闭，正在使用浏览器本地自定义配置。'}
               </div>
@@ -1314,7 +1308,7 @@ export default function SettingsModal() {
                       </button>
                     </div>
                     <div data-selectable-text className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      服务器配置中的密钥会被忽略；此密钥仅保存在当前浏览器，并用于当前配置及服务器指定的 Agent 配置。
+                      服务器配置中的密钥会被忽略；此密钥仅保存在当前浏览器，并用于自动选择的画廊及 Agent 配置。
                     </div>
                   </div>
                 )}
@@ -1384,7 +1378,7 @@ export default function SettingsModal() {
                         setShowProfileMenu(!showProfileMenu)
                       }}
                       disabled={profileMenuDisabled}
-                      className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-transparent bg-black/[0.04] px-3 py-2 text-sm text-gray-700 outline-none transition dark:bg-white/[0.06] dark:text-gray-200 ${profileMenuDisabled ? 'cursor-not-allowed opacity-70' : 'hover:bg-gray-50 dark:hover:bg-white/[0.1]'}`}
+                      className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-transparent bg-black/[0.04] px-3 py-2 text-sm text-gray-700 outline-none transition dark:bg-white/[0.06] dark:text-gray-200 ${profileMenuDisabled ? defaultServiceEnabled ? 'cursor-default' : 'cursor-not-allowed opacity-70' : 'hover:bg-gray-50 dark:hover:bg-white/[0.1]'}`}
                       title={activeProfile.name}
                     >
                       <span className="flex min-w-0 items-center gap-2">
@@ -1393,7 +1387,9 @@ export default function SettingsModal() {
                           {getApiProviderLabel(draft, activeProfile.provider)}
                         </span>
                       </span>
-                      <ChevronDownIcon className={`w-3.5 h-3.5 flex-shrink-0 text-gray-400 dark:text-gray-500 transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''}`} />
+                      {defaultServiceEnabled
+                        ? <span className="shrink-0 text-[10px] text-gray-400 dark:text-gray-500">由当前模式自动选择</span>
+                        : <ChevronDownIcon className={`w-3.5 h-3.5 flex-shrink-0 text-gray-400 dark:text-gray-500 transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''}`} />}
                     </button>
                     
                     {showProfileMenu && !profileMenuDisabled && (

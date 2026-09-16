@@ -14,7 +14,7 @@
     "agentMaxToolRounds": 15,
     "agentWebSearch": false,
     "agentMathFormattingPrompt": true,
-    "agentApiConfigMode": "native",
+    "agentApiConfigMode": "hybrid",
     "agentTextProfileId": "responses-api",
     "agentImageProfileId": "default-openai",
     "profiles": [
@@ -22,6 +22,7 @@
         "id": "default-openai",
         "name": "图片",
         "description": "用于图片生成与编辑。",
+        "isDefault": true,
         "provider": "openai",
         "baseUrl": "http://0.0.0.0/v1",
         "apiKey": "",
@@ -39,7 +40,6 @@
         "id": "responses-api",
         "name": "智能代理",
         "description": "用于智能代理对话与工具调用。",
-        "isDefault": true,
         "provider": "openai",
         "baseUrl": "http://0.0.0.0/v1",
         "apiKey": "",
@@ -56,6 +56,6 @@
         "transparentBackgroundMethod": "api"
       }
     ],
-    "activeProfileId": "responses-api"
+    "activeProfileId": "default-openai"
   }
 }
