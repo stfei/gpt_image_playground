@@ -306,69 +306,7 @@ describe('default service settings', () => {
     expect(useStore.getState().settings.clearInputAfterSubmit).toBe(false)
   })
 
-  it('switches server profiles while keeping the local key and custom backup isolated', () => {
-    const firstServerProfile = createDefaultOpenAIProfile({
-      id: 'server-first',
-      apiKey: 'ignored-first-key',
-      model: 'server-first-model',
-    })
-    const secondServerProfile = createDefaultOpenAIProfile({
-      id: 'server-second',
-      apiKey: 'ignored-second-key',
-      model: 'server-second-model',
-    })
-    const serverSettings = normalizeSettings({
-      ...DEFAULT_SETTINGS,
-      profiles: [firstServerProfile, secondServerProfile],
-      activeProfileId: firstServerProfile.id,
-    })
-    const customProfile = createDefaultOpenAIProfile({
-      id: 'custom-profile',
-      apiKey: 'custom-key',
-      model: 'custom-model',
-    })
-    const customSettings = normalizeSettings({
-      ...DEFAULT_SETTINGS,
-      profiles: [customProfile],
-      activeProfileId: customProfile.id,
-    })
-    useStore.setState({
-      settings: applyServerSettingsApiKey(serverSettings, { value: 'local-key' }),
-      defaultServiceEnabled: true,
-      customSettingsBackup: customSettings,
-      serverSettingsCache: serverSettings,
-      defaultServiceApiKey: { value: 'local-key' },
-      localPreferenceSettings: getLocalPreferenceSettings(customSettings),
-      reusedTaskApiProfileId: 'reused-profile',
-      reusedTaskApiProfileName: '复用配置',
-      reusedTaskApiProfileMissing: true,
-    })
-
-    useStore.getState().setDefaultServiceActiveProfile(secondServerProfile.id)
-
-    expect(useStore.getState().settings.activeProfileId).toBe(secondServerProfile.id)
-    expect(useStore.getState().settings.profiles.map((profile) => profile.apiKey)).toEqual(['', 'local-key'])
-    expect(useStore.getState().serverSettingsCache?.activeProfileId).toBe(secondServerProfile.id)
-    expect(useStore.getState().serverSettingsCache?.profiles.every((profile) => profile.apiKey === '')).toBe(true)
-    expect(useStore.getState().customSettingsBackup).toBe(customSettings)
-    expect(useStore.getState().reusedTaskApiProfileId).toBeNull()
-    expect(useStore.getState().reusedTaskApiProfileName).toBeNull()
-    expect(useStore.getState().reusedTaskApiProfileMissing).toBe(false)
-
-    useStore.getState().setDefaultServiceActiveProfile('unknown-profile')
-    expect(useStore.getState().settings.activeProfileId).toBe(secondServerProfile.id)
-    expect(useStore.getState().serverSettingsCache?.activeProfileId).toBe(secondServerProfile.id)
-
-    useStore.getState().setDefaultServiceEnabled(false)
-    expect(useStore.getState().settings.activeProfileId).toBe(customProfile.id)
-    useStore.getState().setDefaultServiceActiveProfile(firstServerProfile.id)
-    expect(useStore.getState().settings.activeProfileId).toBe(customProfile.id)
-    expect(useStore.getState().serverSettingsCache?.activeProfileId).toBe(secondServerProfile.id)
-    useStore.getState().setDefaultServiceEnabled(true)
-    expect(useStore.getState().settings.activeProfileId).toBe(secondServerProfile.id)
-  })
-
-  it('keeps a selected server profile on refresh and falls back when it is removed', () => {
+  it('uses the active profile from refreshed server settings instead of a cached selection', () => {
     const firstServerProfile = createDefaultOpenAIProfile({ id: 'server-first', model: 'first-v1' })
     const secondServerProfile = createDefaultOpenAIProfile({ id: 'server-second', model: 'second-v1' })
     const serverSettings = normalizeSettings({
@@ -393,9 +331,11 @@ describe('default service settings', () => {
       activeProfileId: refreshedFirstProfile.id,
     }))
 
-    expect(useStore.getState().settings.activeProfileId).toBe(secondServerProfile.id)
-    expect(useStore.getState().settings.model).toBe('second-v2')
+    expect(useStore.getState().settings.activeProfileId).toBe(firstServerProfile.id)
+    expect(useStore.getState().settings.model).toBe('first-v2')
     expect(useStore.getState().settings.apiKey).toBe('local-key')
+    expect(useStore.getState().serverSettingsCache?.activeProfileId).toBe(firstServerProfile.id)
+    expect(useStore.getState().serverSettingsCache?.profiles.every((profile) => profile.apiKey === '')).toBe(true)
 
     useStore.getState().injectServerSettings(normalizeSettings({
       ...DEFAULT_SETTINGS,
