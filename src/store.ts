@@ -669,7 +669,18 @@ export const useStore = create<AppState>()(
         if (st.defaultServiceEnabled) {
           const hasPreferencePatch = hasLocalPreferenceSettingsPatch(s)
           const hasApiKeyPatch = s.profiles === undefined && typeof s.apiKey === 'string'
-          if (!hasPreferencePatch && !hasApiKeyPatch) return {}
+          const serverSettings = st.serverSettingsCache ?? st.settings
+          const profiles = serverSettings.profiles.map((profile) => {
+            const selectedModel = s.profiles?.find((item) => item.id === profile.id)?.selectedModel
+            return selectedModel && splitModelList(profile.model).includes(selectedModel)
+              ? { ...profile, selectedModel }
+              : profile
+          })
+          const hasModelPatch = profiles.some((profile, idx) => profile.selectedModel !== serverSettings.profiles[idx].selectedModel)
+          if (!hasPreferencePatch && !hasApiKeyPatch && !hasModelPatch) return {}
+          const serverSettingsCache = hasModelPatch
+            ? stripServerSettingsApiKeys({ ...serverSettings, profiles })
+            : st.serverSettingsCache
 
           const localPreferenceSettings = hasPreferencePatch
             ? getLocalPreferenceSettings(normalizeSettings({ ...st.settings, ...s }))
@@ -680,8 +691,9 @@ export const useStore = create<AppState>()(
           return {
             defaultServiceApiKey,
             localPreferenceSettings,
+            serverSettingsCache,
             settings: applyServerSettingsApiKey(
-              applyLocalPreferenceSettings(st.serverSettingsCache ?? st.settings, localPreferenceSettings),
+              applyLocalPreferenceSettings(serverSettingsCache ?? st.settings, localPreferenceSettings),
               defaultServiceApiKey,
             ),
           }
@@ -811,6 +823,7 @@ export const useStore = create<AppState>()(
           reusedTaskApiProfileId: null,
           reusedTaskApiProfileName: null,
           reusedTaskApiProfileMissing: false,
+          reusedTaskApiModel: null,
         }
       }),
       setDefaultServiceApiKey: (value) => set((st) => {
@@ -827,7 +840,15 @@ export const useStore = create<AppState>()(
         }
       }),
       injectServerSettings: (serverSettings) => set((st) => {
-        const serverSettingsCache = stripServerSettingsApiKeys(serverSettings)
+        const serverSettingsCache = stripServerSettingsApiKeys({
+          ...serverSettings,
+          profiles: serverSettings.profiles.map((profile) => {
+            const selectedModel = st.serverSettingsCache?.profiles.find((item) => item.id === profile.id)?.selectedModel
+            return selectedModel && splitModelList(profile.model).includes(selectedModel)
+              ? { ...profile, selectedModel }
+              : profile
+          }),
+        })
         return {
           serverSettingsCache,
           ...(st.defaultServiceEnabled
@@ -839,6 +860,7 @@ export const useStore = create<AppState>()(
                 reusedTaskApiProfileId: null,
                 reusedTaskApiProfileName: null,
                 reusedTaskApiProfileMissing: false,
+                reusedTaskApiModel: null,
               }
             : {}),
         }
