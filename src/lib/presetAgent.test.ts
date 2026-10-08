@@ -93,7 +93,7 @@ describe('Agent deployment settings', () => {
     const policy = await import('./presetConfig')
     const { useStore } = await import('../store')
     policy.setPresetConfig({ ...config, agent: { apiConfigMode: 'hybrid', textProfileId: 'text' } })
-    useStore.setState({ settings: normalizeSettings(config), dismissedPresetProviderIds: [] })
+    useStore.setState({ settings: normalizeSettings(config), dismissedPresetProviderIds: [], defaultServiceEnabled: false })
     useStore.getState().setSettings({ agentApiConfigMode: 'off', agentTextProfileId: 'other', agentImageProfileId: 'other' })
     expect(useStore.getState().settings).toMatchObject({ agentApiConfigMode: 'hybrid', agentTextProfileId: 'text', agentImageProfileId: 'other' })
     expect(policy.isPresetAgentFieldLocked('apiConfigMode')).toBe(true)

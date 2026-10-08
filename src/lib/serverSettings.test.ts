@@ -89,6 +89,17 @@ describe('server settings', () => {
     expect(settings.profiles[0].apiKey).toBe('')
   })
 
+  it('preserves model lists and the server selected model through parsing and key injection', () => {
+    const document = config()
+    document.settings.profiles[0].model = 'model-a， model-b, model-a'
+    document.settings.profiles[0].selectedModel = 'model-b'
+    const settings = parseServerSettingsConfig(document)
+    const applied = applyServerSettingsApiKey(settings, { value: 'local-key' })
+
+    expect(applied.profiles[0]).toMatchObject({ model: 'model-a, model-b', selectedModel: 'model-b', apiKey: 'local-key' })
+    expect(stripServerSettingsApiKeys(applied).profiles[0]).toMatchObject({ selectedModel: 'model-b', apiKey: '' })
+  })
+
   it('normalizes invalid reasoning effort without dropping other profile fields', () => {
     const document = config()
     Object.assign(document.settings.profiles[0], { reasoningEffort: 'invalid' })
@@ -202,6 +213,12 @@ describe('server settings', () => {
       clearInputAfterSubmit: true,
       enterSubmit: true,
       agentMathFormattingPrompt: false,
+      showBatchPrompt: true,
+      batchPromptEnabled: true,
+      batchPromptMode: 'concurrent',
+      batchPromptConcurrencyLimited: false,
+      batchPromptConcurrency: 4,
+      referenceImageEditAction: 'mask',
     })
     const settings = applyLocalPreferenceSettings(
       serverSettings,
@@ -212,6 +229,14 @@ describe('server settings', () => {
     expect(settings.clearInputAfterSubmit).toBe(true)
     expect(settings.enterSubmit).toBe(true)
     expect(settings.agentMathFormattingPrompt).toBe(false)
+    expect(settings).toMatchObject({
+      showBatchPrompt: true,
+      batchPromptEnabled: true,
+      batchPromptMode: 'concurrent',
+      batchPromptConcurrencyLimited: false,
+      batchPromptConcurrency: 4,
+      referenceImageEditAction: 'mask',
+    })
   })
 
   it('loads the fixed same-origin URL without cache', async () => {

@@ -314,7 +314,7 @@ npm run deploy:cf
 
 **服务端默认设置：**
 
-应用启动时会读取同源 `/app-config.json`。设置中的“默认服务”首次默认为开启；开启后，API 与 Agent 配置以该文件为准，并根据画廊或 Agent 模式自动展示和使用对应配置，用户不能手动切换或修改配置内容；单一 API Key 会用于画廊及服务端指定的 Agent 配置，习惯配置仍保存在当前浏览器。配置文件格式如下：
+应用启动时会读取同源 `/app-config.json`。设置中的“默认服务”首次默认为开启；开启后，API 与 Agent 配置以该文件为准，并根据画廊或 Agent 模式自动展示和使用对应配置，用户不能手动切换或修改配置内容，但可以在首页选择服务器列出的模型；单一 API Key 会用于画廊及服务端指定的 Agent 配置，习惯配置仍保存在当前浏览器。配置文件格式如下：
 
 ```json
 {
@@ -370,6 +370,8 @@ npm run deploy:cf
 `imageGenerationModel` 仅用于 Responses API 的 `image_generation` 工具，建议显式填写实际可用的图片模型；留空或省略时不发送工具模型 ID，由上游接口决定。`reasoningEffort` 仅用于 Responses API，可设置为 `none`、`minimal`、`low`、`medium`、`high`、`xhigh` 或 `max`。`responseFormatB64Json: true` 会要求 Images API 直接返回 Base64 图片，并非所有服务商或网关都支持；关闭时可设为 `false` 或省略。`transparentBackgroundMethod` 可设为 `api`（接口原生透明背景）或 `local`（浏览器本地后处理）。`activeProfileId` 指定画廊配置，`agentTextProfileId` 指定 Agent 的主配置；`hybrid` 模式还会使用 `agentImageProfileId` 指定 Agent 图像配置。默认服务开启时，设置页会随画廊或 Agent 模式自动展示对应的主配置。
 
 多配置时，`isDefault: true` 必须且只能标记一项，用于表示部署默认配置；`activeProfileId` 则决定默认服务加载后实际使用的活动配置，两者建议指向同一 profile。仓库中的 `public/app-config.json` 提供完整默认示例。部署时可以替换该文件；Docker 可将自定义文件只读挂载到 `/usr/share/nginx/html/app-config.json`。服务端文件中的 API Key 会被忽略，且 profile ID 在更新配置时应保持稳定。`providerDrafts` 是浏览器切换供应商时使用的内部草稿状态，不应写入服务端配置。
+
+`model` 支持用英文或中文逗号分隔多个模型，`selectedModel` 可指定首次使用的模型。用户的模型选择保存在无密钥的服务器配置缓存中；重新加载配置后，如果该模型仍在列表中则保留，否则回退到服务器指定的选择或列表中的第一个模型。批量提交的 `showBatchPrompt`、`batchPromptEnabled`、`batchPromptMode`（`queue` / `concurrent`）、`batchPromptConcurrencyLimited`、`batchPromptConcurrency`，以及参考图编辑方式 `referenceImageEditAction`（`ask` / `sketch` / `mask`）均属于本地习惯配置，可在默认服务开启时修改并跨刷新保留。
 
 ```bash
 docker run -d -p 8080:80 \

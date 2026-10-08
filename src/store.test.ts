@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { strToU8, zipSync } from 'fflate'
 import { DEFAULT_PARAMS } from './types'
-import { createDefaultFalProfile, createDefaultOpenAIProfile, DEFAULT_RESPONSES_MODEL, DEFAULT_SETTINGS, normalizeSettings } from './lib/apiProfiles'
+import { createDefaultFalProfile, createDefaultOpenAIProfile, DEFAULT_RESPONSES_MODEL, DEFAULT_SETTINGS, getActiveApiProfile, getAgentImageApiProfile, getAgentTextApiProfile, normalizeSettings } from './lib/apiProfiles'
 import type { AgentConversation, ExportData, StoredImage, StoredImageThumbnail, TaskRecord } from './types'
 import { getSelectedImageMentionLabel } from './lib/promptImageMentions'
 import { hasActiveDataOperations } from './lib/dataOperations'
@@ -306,6 +306,99 @@ describe('default service settings', () => {
     expect(useStore.getState().settings.clearInputAfterSubmit).toBe(false)
   })
 
+  it('keeps batch and reference editor preferences locally in default service mode', () => {
+    useStore.setState({
+      settings: DEFAULT_SETTINGS,
+      defaultServiceEnabled: true,
+      serverSettingsCache: DEFAULT_SETTINGS,
+      customSettingsBackup: DEFAULT_SETTINGS,
+      defaultServiceApiKey: null,
+      localPreferenceSettings: getLocalPreferenceSettings(DEFAULT_SETTINGS),
+    })
+    const preferences = {
+      showBatchPrompt: true,
+      batchPromptEnabled: true,
+      batchPromptMode: 'concurrent' as const,
+      batchPromptConcurrencyLimited: false,
+      batchPromptConcurrency: 3,
+      referenceImageEditAction: 'sketch' as const,
+    }
+
+    useStore.getState().setSettings(preferences)
+    useStore.getState().injectServerSettings(DEFAULT_SETTINGS)
+    expect(useStore.getState().settings).toMatchObject(preferences)
+    expect(getPersistedState(useStore.getState()).localPreferenceSettings).toMatchObject(preferences)
+    useStore.getState().setDefaultServiceEnabled(false)
+    expect(useStore.getState().settings).toMatchObject(preferences)
+    useStore.getState().setDefaultServiceEnabled(true)
+    expect(useStore.getState().settings).toMatchObject(preferences)
+  })
+
+  it('selects only server-listed models and retains valid choices through refresh and persistence', () => {
+    const imageProfile = createDefaultOpenAIProfile({ id: 'server-image', model: 'image-a, image-b' })
+    const textProfile = createDefaultOpenAIProfile({ id: 'server-text', apiMode: 'responses', model: 'text-a, text-b' })
+    const agentImageProfile = createDefaultOpenAIProfile({ id: 'agent-image', model: 'agent-a, agent-b' })
+    const serverSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      profiles: [imageProfile, textProfile, agentImageProfile],
+      activeProfileId: imageProfile.id,
+      agentApiConfigMode: 'hybrid',
+      agentTextProfileId: textProfile.id,
+      agentImageProfileId: agentImageProfile.id,
+    })
+    useStore.setState({
+      settings: applyServerSettingsApiKey(serverSettings, { value: 'local-key' }),
+      defaultServiceEnabled: true,
+      serverSettingsCache: serverSettings,
+      customSettingsBackup: DEFAULT_SETTINGS,
+      defaultServiceApiKey: { value: 'local-key' },
+      localPreferenceSettings: getLocalPreferenceSettings(DEFAULT_SETTINGS),
+    })
+
+    useStore.getState().setSettings({
+      profiles: [
+        { ...imageProfile, selectedModel: 'image-b', model: 'blocked-model', baseUrl: 'https://blocked.example' },
+        { ...textProfile, selectedModel: 'text-b' },
+        { ...agentImageProfile, selectedModel: 'agent-b' },
+      ],
+    })
+    expect(getActiveApiProfile(useStore.getState().settings).model).toBe('image-b')
+    expect(getAgentTextApiProfile(useStore.getState().settings)?.model).toBe('text-b')
+    expect(getAgentImageApiProfile(useStore.getState().settings)?.model).toBe('agent-b')
+    expect(useStore.getState().settings.profiles[0]).toMatchObject({ model: 'image-a, image-b', baseUrl: imageProfile.baseUrl })
+    expect(useStore.getState().customSettingsBackup).toEqual(DEFAULT_SETTINGS)
+    const selectedSettings = useStore.getState().settings
+    useStore.getState().setSettings({ profiles: [{ ...imageProfile, selectedModel: 'unknown-model' }] })
+    expect(useStore.getState().settings).toBe(selectedSettings)
+
+    useStore.setState({ reusedTaskApiModel: 'stale-model' })
+    useStore.getState().injectServerSettings(serverSettings)
+    expect(useStore.getState().reusedTaskApiModel).toBeNull()
+    useStore.getState().setDefaultServiceApiKey('updated-key')
+    expect(getActiveApiProfile(useStore.getState().settings)).toMatchObject({ model: 'image-b', apiKey: 'updated-key' })
+    expect(useStore.getState().serverSettingsCache?.profiles.every((profile) => profile.apiKey === '')).toBe(true)
+    const restored = normalizePersistedState(getPersistedState(useStore.getState()), {
+      settings: DEFAULT_SETTINGS,
+      params: DEFAULT_PARAMS,
+      dismissedCodexCliPrompts: [],
+      agentConversations: [],
+      favoriteCollections: [],
+      defaultFavoriteCollectionId: null,
+    })!
+    expect(getActiveApiProfile(restored.state.settings).model).toBe('image-b')
+    expect(getAgentImageApiProfile(restored.state.settings)?.model).toBe('agent-b')
+    expect(restored.state.serverSettingsCache?.profiles.every((profile) => profile.apiKey === '')).toBe(true)
+
+    useStore.getState().injectServerSettings(normalizeSettings({
+      ...serverSettings,
+      profiles: [{ ...imageProfile, model: 'image-a, image-c', selectedModel: 'image-c' }, textProfile],
+      agentImageProfileId: imageProfile.id,
+    }))
+    expect(getActiveApiProfile(useStore.getState().settings).model).toBe('image-c')
+    expect(getAgentTextApiProfile(useStore.getState().settings)?.model).toBe('text-b')
+    expect(useStore.getState().serverSettingsCache?.profiles.some((profile) => profile.id === agentImageProfile.id)).toBe(false)
+  })
+
   it('uses the active profile from refreshed server settings instead of a cached selection', () => {
     const firstServerProfile = createDefaultOpenAIProfile({ id: 'server-first', model: 'first-v1' })
     const secondServerProfile = createDefaultOpenAIProfile({ id: 'server-second', model: 'second-v1' })
@@ -412,7 +505,13 @@ describe('default service settings', () => {
   it('keeps preset imports in the custom backup while the default service is enabled', async () => {
     const serverProfile = createDefaultOpenAIProfile({ id: 'server-profile', model: 'server-model' })
     const customProfile = createDefaultOpenAIProfile({ id: 'custom-profile', model: 'custom-model' })
-    const presetProfile = createDefaultOpenAIProfile({ id: 'preset-profile', model: 'preset-model' })
+    const presetProfile = createDefaultOpenAIProfile({ id: 'preset-profile', isDefault: true, model: 'preset-model' })
+    const presetTextProfile = createDefaultOpenAIProfile({ id: 'preset-text', apiMode: 'responses' })
+    const preset = {
+      customProviders: [],
+      profiles: [presetProfile, presetTextProfile],
+      agent: { apiConfigMode: 'hybrid' as const, textProfileId: presetTextProfile.id, imageProfileId: presetProfile.id },
+    }
     const serverSettings = normalizeSettings({
       ...DEFAULT_SETTINGS,
       profiles: [serverProfile],
@@ -423,7 +522,7 @@ describe('default service settings', () => {
       profiles: [customProfile],
       activeProfileId: customProfile.id,
     })
-    setPresetConfig({ customProviders: [], profiles: [presetProfile] })
+    setPresetConfig(preset)
     useStore.setState({
       settings: serverSettings,
       previousPresetConfig: null,
@@ -436,14 +535,18 @@ describe('default service settings', () => {
       localPreferenceSettings: getLocalPreferenceSettings(customSettings),
     })
 
-    await useStore.getState().setPresetImportedSettings({ customProviders: [], profiles: [presetProfile] })
+    await useStore.getState().setPresetImportedSettings(preset)
 
     expect(useStore.getState().settings.profiles.map((profile) => profile.id)).toEqual(['server-profile'])
     expect(useStore.getState().customSettingsBackup?.profiles.some((profile) => profile.id === 'preset-profile')).toBe(true)
+    expect(useStore.getState().previousPresetConfig?.agent).toEqual(preset.agent)
+    expect(useStore.getState().customSettingsBackup).toMatchObject({ agentApiConfigMode: 'hybrid', agentTextProfileId: 'preset-text' })
 
     useStore.getState().setDefaultServiceEnabled(false)
     expect(useStore.getState().settings.profiles.some((profile) => profile.id === 'preset-profile')).toBe(true)
     expect(useStore.getState().settings.profiles.some((profile) => profile.id === 'server-profile')).toBe(false)
+    expect(getAgentTextApiProfile(useStore.getState().settings)?.id).toBe(presetTextProfile.id)
+    expect(getAgentImageApiProfile(useStore.getState().settings)?.id).toBe(presetProfile.id)
   })
 })
 

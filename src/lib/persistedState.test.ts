@@ -159,6 +159,7 @@ describe('persisted state codec', () => {
       apiKey: 'server-secret-selected',
       model: 'server-model',
       imageGenerationModel: 'server-image-model',
+      selectedModel: 'server-model',
       apiMode: 'responses',
       reasoningEffort: 'medium',
       responseFormatB64Json: true,
@@ -177,6 +178,12 @@ describe('persisted state codec', () => {
     const customSettings = normalizeSettings({
       ...DEFAULT_SETTINGS,
       clearInputAfterSubmit: true,
+      showBatchPrompt: true,
+      batchPromptEnabled: true,
+      batchPromptMode: 'concurrent',
+      batchPromptConcurrencyLimited: false,
+      batchPromptConcurrency: 4,
+      referenceImageEditAction: 'sketch',
       profiles: [customProfile],
       activeProfileId: customProfile.id,
     })
@@ -216,6 +223,15 @@ describe('persisted state codec', () => {
       transparentBackgroundMethod: 'local',
     })
     expect(result.state.settings.clearInputAfterSubmit).toBe(true)
+    expect(result.state.settings).toMatchObject({
+      showBatchPrompt: true,
+      batchPromptEnabled: true,
+      batchPromptMode: 'concurrent',
+      batchPromptConcurrencyLimited: false,
+      batchPromptConcurrency: 4,
+      referenceImageEditAction: 'sketch',
+    })
+    expect(result.state.settings.profiles[1].selectedModel).toBe('server-model')
     expect(result.state.customSettingsBackup?.model).toBe('custom-model')
   })
 
