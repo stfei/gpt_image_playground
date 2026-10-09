@@ -6,6 +6,7 @@
     "persistInputOnRestart": true,
     "reuseTaskApiProfileTemporarily": false,
     "alwaysShowRetryButton": false,
+    "retryMode": "new",
     "allowPromptRewrite": false,
     "taskCompletionNotification": false,
     "enterSubmit": false,

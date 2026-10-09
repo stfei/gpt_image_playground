@@ -373,6 +373,8 @@ npm run deploy:cf
 
 `model` 支持用英文或中文逗号分隔多个模型，`selectedModel` 可指定首次使用的模型。用户的模型选择保存在无密钥的服务器配置缓存中；重新加载配置后，如果该模型仍在列表中则保留，否则回退到服务器指定的选择或列表中的第一个模型。批量提交的 `showBatchPrompt`、`batchPromptEnabled`、`batchPromptMode`（`queue` / `concurrent`）、`batchPromptConcurrencyLimited`、`batchPromptConcurrency`，以及参考图编辑方式 `referenceImageEditAction`（`ask` / `sketch` / `mask`）均属于本地习惯配置，可在默认服务开启时修改并跨刷新保留。
 
+重试方式 `retryMode` 同样属于本地习惯配置，可设为 `new`（新建任务，默认）、`overwriteFailed`（覆盖失败任务）或 `overwriteAll`（覆盖任何任务）。只有开启 `alwaysShowRetryButton` 时才允许 `overwriteAll`；关闭后回退为 `overwriteFailed`。默认服务下可修改并跨刷新保留，服务器重新下发配置不会覆盖本地选择；Agent 图片卡片仍始终新建任务。
+
 ```bash
 docker run -d -p 8080:80 \
   -v /path/to/app-config.json:/usr/share/nginx/html/app-config.json:ro \

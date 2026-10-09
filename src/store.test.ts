@@ -334,6 +334,67 @@ describe('default service settings', () => {
     expect(useStore.getState().settings).toMatchObject(preferences)
   })
 
+  it('keeps retry preferences through server refresh, persistence and mode changes', () => {
+    useStore.setState({
+      settings: DEFAULT_SETTINGS,
+      defaultServiceEnabled: true,
+      serverSettingsCache: DEFAULT_SETTINGS,
+      customSettingsBackup: DEFAULT_SETTINGS,
+      defaultServiceApiKey: null,
+      localPreferenceSettings: getLocalPreferenceSettings(DEFAULT_SETTINGS),
+    })
+
+    useStore.getState().setSettings({ retryMode: 'overwriteFailed' })
+    expect(useStore.getState().settings.retryMode).toBe('overwriteFailed')
+    useStore.getState().setSettings({ alwaysShowRetryButton: true, retryMode: 'overwriteAll' })
+    useStore.getState().injectServerSettings(DEFAULT_SETTINGS)
+    expect(useStore.getState().settings.retryMode).toBe('overwriteAll')
+    expect(useStore.getState().customSettingsBackup?.retryMode).toBe('new')
+
+    const encoded = getPersistedState(useStore.getState())
+    const restored = normalizePersistedState(encoded, { ...encoded, settings: DEFAULT_SETTINGS, agentConversations: [] })!
+    expect(restored.state.settings.retryMode).toBe('overwriteAll')
+    expect(restored.state.localPreferenceSettings.retryMode).toBe('overwriteAll')
+    useStore.getState().setDefaultServiceEnabled(false)
+    expect(useStore.getState().settings.retryMode).toBe('overwriteAll')
+    useStore.getState().setDefaultServiceEnabled(true)
+    expect(useStore.getState().settings.retryMode).toBe('overwriteAll')
+
+    useStore.getState().setSettings({ alwaysShowRetryButton: false })
+    expect(useStore.getState().settings.retryMode).toBe('overwriteFailed')
+    expect(useStore.getState().localPreferenceSettings.retryMode).toBe('overwriteFailed')
+  })
+
+  it('allows overwrite retry in default service mode with the server profile and local key', async () => {
+    await clearTasks()
+    vi.mocked(callImageApi).mockReset()
+    const profile = createDefaultOpenAIProfile({ id: 'server-retry', baseUrl: 'https://server.example/v1', model: 'server-model' })
+    const serverSettings = normalizeSettings({ profiles: [profile], activeProfileId: profile.id })
+    const failed = task({ status: 'error', error: '上次失败', isFavorite: true })
+    useStore.setState({
+      settings: serverSettings,
+      defaultServiceEnabled: true,
+      serverSettingsCache: serverSettings,
+      customSettingsBackup: DEFAULT_SETTINGS,
+      defaultServiceApiKey: null,
+      localPreferenceSettings: getLocalPreferenceSettings(DEFAULT_SETTINGS),
+      tasks: [failed],
+    })
+    useStore.getState().setDefaultServiceApiKey('local-key')
+    useStore.getState().setSettings({ retryMode: 'overwriteFailed' })
+    const request = deferred<Awaited<ReturnType<typeof callImageApi>>>()
+    vi.mocked(callImageApi).mockImplementationOnce(() => request.promise)
+
+    await retryTask(failed)
+    await vi.waitFor(() => expect(callImageApi).toHaveBeenCalledOnce())
+    expect(useStore.getState().tasks).toHaveLength(1)
+    expect(useStore.getState().tasks[0]).toMatchObject({ id: failed.id, status: 'running', createdAt: failed.createdAt, isFavorite: true, apiProfileId: profile.id })
+    expect(vi.mocked(callImageApi).mock.calls[0][0].settings).toMatchObject({ baseUrl: 'https://server.example/v1', model: 'server-model', apiKey: 'local-key' })
+    expect(useStore.getState().serverSettingsCache?.profiles[0].apiKey).toBe('')
+    request.resolve({ images: [], actualParams: {}, actualParamsList: [], revisedPrompts: [] })
+    await vi.waitFor(() => expect(useStore.getState().tasks[0].status).toBe('done'))
+  })
+
   it('selects only server-listed models and retains valid choices through refresh and persistence', () => {
     const imageProfile = createDefaultOpenAIProfile({ id: 'server-image', model: 'image-a, image-b' })
     const textProfile = createDefaultOpenAIProfile({ id: 'server-text', apiMode: 'responses', model: 'text-a, text-b' })
