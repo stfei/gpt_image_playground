@@ -239,6 +239,25 @@ describe('server settings', () => {
     })
   })
 
+  it.each([
+    ['new', false, 'new'],
+    ['overwriteFailed', false, 'overwriteFailed'],
+    ['overwriteAll', true, 'overwriteAll'],
+    ['overwriteAll', false, 'overwriteFailed'],
+    ['invalid', true, 'new'],
+    [undefined, false, 'new'],
+  ])('keeps normalized local retry preferences (%s, %s)', (retryMode, alwaysShowRetryButton, expected) => {
+    const serverSettings = parseServerSettingsConfig(config())
+    const preferences = getLocalPreferenceSettings(normalizeSettings({ retryMode, alwaysShowRetryButton }))
+    const settings = applyLocalPreferenceSettings(serverSettings, preferences)
+
+    expect(preferences.retryMode).toBe(expected)
+    expect(settings.retryMode).toBe(expected)
+    expect(settings.alwaysShowRetryButton).toBe(alwaysShowRetryButton)
+    expect(settings.model).toBe('server-model')
+    expect(settings.apiKey).toBe('')
+  })
+
   it('loads the fixed same-origin URL without cache', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify(config()), {
       status: 200,

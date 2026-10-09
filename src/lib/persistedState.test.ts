@@ -189,6 +189,8 @@ describe('persisted state codec', () => {
       ...DEFAULT_SETTINGS,
       clearInputAfterSubmit: true,
       showBatchPrompt: true,
+      alwaysShowRetryButton: true,
+      retryMode: 'overwriteAll',
       batchPromptEnabled: true,
       batchPromptMode: 'concurrent',
       batchPromptConcurrencyLimited: false,
@@ -217,6 +219,7 @@ describe('persisted state codec', () => {
       transparentBackgroundMethod: 'local',
     })
     expect(encoded.defaultServiceApiKey).toEqual({ value: 'local-key' })
+    expect(encoded.localPreferenceSettings.retryMode).toBe('overwriteAll')
 
     const result = normalizePersistedState(encoded, fallback(), 100)!
 
@@ -233,6 +236,8 @@ describe('persisted state codec', () => {
       transparentBackgroundMethod: 'local',
     })
     expect(result.state.settings.clearInputAfterSubmit).toBe(true)
+    expect(result.state.settings.retryMode).toBe('overwriteAll')
+    expect(result.state.settings.alwaysShowRetryButton).toBe(true)
     expect(result.state.settings).toMatchObject({
       showBatchPrompt: true,
       batchPromptEnabled: true,
