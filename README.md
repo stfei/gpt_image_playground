@@ -801,6 +801,10 @@ https://cooksleep.github.io/gpt_image_playground?apiUrl={address}&apiKey={key}&m
 
 ---
 
+## 分支维护
+
+`dev2` 的新增功能、当前行为边界、历史变更和下次变基验收要求，见 [dev2 功能保留与变基检查清单](docs/dev2-rebase-guide.md)。
+
 ## 💻 技术栈
 
 <div align="center">
