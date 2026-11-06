@@ -404,6 +404,55 @@ describe('default service settings', () => {
     await vi.waitFor(() => expect(useStore.getState().tasks[0].status).toBe('done'))
   })
 
+  it('keeps new appearance and client settings through refresh, persistence and mode changes', () => {
+    useStore.setState({
+      settings: DEFAULT_SETTINGS,
+      defaultServiceEnabled: true,
+      serverSettingsCache: DEFAULT_SETTINGS,
+      customSettingsBackup: DEFAULT_SETTINGS,
+      defaultServiceApiKey: null,
+      localPreferenceSettings: getLocalPreferenceSettings(DEFAULT_SETTINGS),
+    })
+    const preferences = {
+      saveTasksToActiveFavoriteCollection: false,
+      autoCheckUpdate: false,
+      writeLogFile: false,
+      privacyModeShortcut: 'Ctrl+Alt+P',
+      colorMode: 'light' as const,
+      uiFont: 'custom' as const,
+      uiFontName: 'Arial',
+      monoFont: 'system' as const,
+      monoFontName: 'Consolas',
+      saveLocationMode: 'default' as const,
+    }
+    for (const [key, value] of Object.entries(preferences)) {
+      useStore.getState().setSettings({ [key]: value })
+      expect(useStore.getState().settings[key as keyof typeof preferences]).toBe(value)
+    }
+    useStore.getState().injectServerSettings(DEFAULT_SETTINGS)
+    expect(useStore.getState().settings).toMatchObject(preferences)
+    expect(useStore.getState().customSettingsBackup?.colorMode).toBe(DEFAULT_SETTINGS.colorMode)
+
+    const encoded = getPersistedState(useStore.getState())
+    const restored = normalizePersistedState(encoded, { ...encoded, settings: DEFAULT_SETTINGS, agentConversations: [] })!
+    expect(restored.state.settings).toMatchObject(preferences)
+    expect(restored.state.localPreferenceSettings).toMatchObject(preferences)
+    useStore.getState().setDefaultServiceEnabled(false)
+    expect(useStore.getState().settings).toMatchObject(preferences)
+    useStore.getState().setDefaultServiceEnabled(true)
+    expect(useStore.getState().settings).toMatchObject(preferences)
+  })
+
+  it('migrates main settings with appearance and privacy preferences to a custom backup', () => {
+    const settings = normalizeSettings({ colorMode: 'dark', uiFont: 'custom', uiFontName: 'Arial', privacyModeShortcut: '', saveTasksToActiveFavoriteCollection: false })
+    const migrated = migratePersistedState({ settings }, 2)
+    const restored = normalizePersistedState(migrated, { ...getPersistedState(useStore.getState()), settings: DEFAULT_SETTINGS, agentConversations: [] })!
+
+    expect(restored.state.defaultServiceEnabled).toBe(true)
+    expect(restored.state.customSettingsBackup).toMatchObject({ colorMode: 'dark', uiFont: 'custom', uiFontName: 'Arial', privacyModeShortcut: '', saveTasksToActiveFavoriteCollection: false })
+    expect(restored.state.settings).toMatchObject({ colorMode: 'dark', uiFont: 'custom', uiFontName: 'Arial', privacyModeShortcut: '', saveTasksToActiveFavoriteCollection: false })
+  })
+
   it('selects only server-listed models and retains valid choices through refresh and persistence', () => {
     const imageProfile = createDefaultOpenAIProfile({ id: 'server-image', model: 'image-a, image-b' })
     const textProfile = createDefaultOpenAIProfile({ id: 'server-text', apiMode: 'responses', model: 'text-a, text-b' })

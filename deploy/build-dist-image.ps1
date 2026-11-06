@@ -32,6 +32,9 @@ $viteEnv = [ordered]@{
   VITE_SHOW_PRESET_CONFIG_ONLY = '__VITE_SHOW_PRESET_CONFIG_ONLY_PLACEHOLDER__'
   VITE_LOCK_PRESET_CONFIG_PARAMS = '__VITE_LOCK_PRESET_CONFIG_PARAMS_PLACEHOLDER__'
   VITE_PREVENT_PRESET_CONFIG_DELETION = '__VITE_PREVENT_PRESET_CONFIG_DELETION_PLACEHOLDER__'
+  VITE_DEFAULT_UI_FONT = '__VITE_DEFAULT_UI_FONT_PLACEHOLDER__'
+  VITE_DEFAULT_MONO_FONT = '__VITE_DEFAULT_MONO_FONT_PLACEHOLDER__'
+  VITE_BUILTIN_FONT_SOURCE = '__VITE_BUILTIN_FONT_SOURCE_PLACEHOLDER__'
 }
 $composeEnv = [ordered]@{
   IMAGE_NAME = $ImageName
@@ -40,7 +43,7 @@ $composeEnv = [ordered]@{
 $previousEnv = @{}
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-  throw 'npm was not found. Install Node.js 20 or later first.'
+  throw 'npm was not found. Install Node.js 24 or later first.'
 }
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {

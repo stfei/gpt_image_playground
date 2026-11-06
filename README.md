@@ -200,7 +200,6 @@ npm run build
 
 以上变量会固化到本次构建产物，修改后必须重新构建。重新部署相同版本后若页面仍使用旧设置，请清除站点缓存或使用无痕窗口验证。
 
-
 <details>
 <summary><strong>▲ 方式二：Vercel 一键部署（网页版推荐）</strong></summary>
 
@@ -281,7 +280,7 @@ npm run deploy:cf
 
 **服务端默认设置：**
 
-应用启动时会读取同源 `/app-config.json`。设置中的“默认服务”首次默认为开启；开启后，API 与 Agent 配置以该文件为准，并根据画廊或 Agent 模式自动展示和使用对应配置，用户不能手动切换或修改配置内容，但可以在首页选择服务器列出的模型；单一 API Key 会用于画廊及服务端指定的 Agent 配置，习惯配置仍保存在当前浏览器。配置文件格式如下：
+网页版启动时会读取同源 `/app-config.json`。设置中的“默认服务”首次默认为开启；开启后，API 与 Agent 配置以该文件为准，并根据画廊或 Agent 模式自动展示和使用对应配置，用户不能手动切换或修改配置内容，但可以在首页选择服务器列出的模型；单一 API Key 会用于画廊及服务端指定的 Agent 配置，习惯配置仍保存在当前浏览器。桌面客户端不加载此文件，也不显示默认服务开关，保持主线的本地配置、SQLite 和原生网络代理；恢复带有服务器模式标记的版本 4 数据时优先恢复自定义备份。配置文件格式如下：
 
 ```json
 {
@@ -299,7 +298,8 @@ npm run deploy:cf
         "provider": "openai",
         "baseUrl": "https://api.openai.com/v1",
         "apiKey": "",
-        "model": "gpt-image-2",
+        "model": "gpt-image-2.6-sunburst",
+        "svgModel": "gpt-6.1-sol",
         "timeout": 600,
         "apiMode": "images",
         "codexCli": false,
@@ -316,8 +316,9 @@ npm run deploy:cf
         "provider": "openai",
         "baseUrl": "https://api.openai.com/v1",
         "apiKey": "",
-        "model": "gpt-5.6-terra",
-        "imageGenerationModel": "gpt-image-2",
+        "model": "gpt-6.1-sol",
+        "imageGenerationModel": "gpt-image-2.6-sunburst",
+        "svgModel": "gpt-6.1-sol",
         "timeout": 600,
         "apiMode": "responses",
         "reasoningEffort": "medium",
@@ -342,6 +343,10 @@ npm run deploy:cf
 
 重试方式 `retryMode` 同样属于本地习惯配置，可设为 `new`（新建任务，默认）、`overwriteFailed`（覆盖失败任务）或 `overwriteAll`（覆盖任何任务）。只有开启 `alwaysShowRetryButton` 时才允许 `overwriteAll`；关闭后回退为 `overwriteFailed`。默认服务下可修改并跨刷新保留，服务器重新下发配置不会覆盖本地选择；Agent 图片卡片仍始终新建任务。
 
+新版 `svgModel` 是生成 SVG 时使用的文本模型，与图像 `model` 分开设置；缺省为 `gpt-6.1-sol`。SVG、GIF 和复杂度的可用性由主线按图像模型判断，需使用支持这些能力的 GPT Image 2.6 或更新模型。上例演示新版模型；仓库 `public/app-config.json` 中显式配置的业务模型仍予以保留，部署时可按上游支持情况调整。
+
+`saveTasksToActiveFavoriteCollection`、`privacyModeShortcut`、`colorMode`、`uiFont` / `uiFontName`、`monoFont` / `monoFontName`，以及客户端的 `saveLocationMode`、`writeLogFile` 和更新检查 `autoCheckUpdate` 也作为本地偏好保留，默认服务下可修改，服务器刷新不会覆盖。客户端网络代理仍使用主线独立的本机代理设置，不与网页版 `/api-proxy/` 混用。链接中的 `apiKey` 先由用户确认再写入本地 Key，不能借链接修改服务器参数。
+
 ```bash
 docker run -d -p 8080:80 \
   -v /path/to/app-config.json:/usr/share/nginx/html/app-config.json:ro \
@@ -357,30 +362,9 @@ $env:APP_CONFIG_PATH='D:\config\app-config.json'
 .\deploy\build-dist-image.ps1 -SkipInstall
 ```
 
-**环境变量：**
+dist 构建脚本和 Compose 同时支持 `DEFAULT_UI_FONT`、`DEFAULT_MONO_FONT`、`BUILTIN_FONT_SOURCE`，与主线 Docker 镜像一致，可在运行时切换默认字体及内置字体来源。
 
-| 变量 | 说明 |
-|------|------|
-| `DEFAULT_API_URL` | 预置配置，支持上述三种填写方式。若值指向 `.json` 文件或容器内路径，容器启动时自动读取并内嵌到页面。宿主机文件需通过 volume 挂载。详见 [预置配置说明](#preset-config) |
-| `ENABLE_API_PROXY=true` | 开启 Nginx 同源代理，请求发往 `/api-proxy/{路径}` 再转发到 `API_PROXY_URL` |
-| `API_PROXY_URL` | 代理转发的完整 API 基础地址（不自动补 `/v1`） |
-| `LOCK_API_PROXY=true` | 强制锁定代理为开启，用户无法关闭 |
-| `HOST` / `PORT` | Nginx 监听地址和端口，默认 `0.0.0.0:80` |
-
-> 开启 API 代理后，任何人都能将你的服务器作为代理来请求目标 API。建议仅在有访问控制（如 IP 白名单）或本地网络中开启。
-
-> 旧版 `API_URL` 已拆分为 `DEFAULT_API_URL` 和 `API_PROXY_URL`，容器启动时自动兼容，无需立即修改。
-
-**隐藏真实 API 地址**
-
-配合 `ENABLE_API_PROXY=true` + `LOCK_API_PROXY=true` 可隐藏上游地址：
-
-- OpenAI 兼容接口：`DEFAULT_API_URL` 留空或填占位地址（如 `https://proxy`）。
-- 自定义供应商：JSON 中配置的 `baseUrl` 留空并设置 `apiProxy: true`（仅支持同步配置）。
-
-用户只能看到空值或占位地址，真实地址仅存在于 `API_PROXY_URL`。
-
-**Docker CLI 示例**
+**Docker CLI**
 
 ```bash
 docker run -d -p 8080:80 \
@@ -513,6 +497,8 @@ npm run build
 | 构建时变量 | Docker 变量 | 说明 |
 |------|------|------|
 | `VITE_DEFAULT_API_URL` | `DEFAULT_API_URL` | 预置配置，见下文 |
+| `VITE_API_PROXY_AVAILABLE=true` | `ENABLE_API_PROXY=true` | 声明前端部署提供同源 `/api-proxy/`；Docker 同时开启 Nginx 路由 |
+| `VITE_API_PROXY_LOCKED=true` | `LOCK_API_PROXY=true` | 强制兼容配置使用 API 代理，需同时启用代理可用变量 |
 | `VITE_LOCK_PRESET_CONFIG_PARAMS=true` | `LOCK_PRESET_CONFIG_PARAMS=true` | 锁定预置配置中除 API Key 外的参数，禁止编辑随预置引入的自定义供应商；当前锁定配置引用的供应商解除引用后才能删除 |
 | `VITE_PREVENT_PRESET_CONFIG_DELETION=true` | `PREVENT_PRESET_CONFIG_DELETION=true` | 禁止删除预置配置及随预置引入的自定义供应商，不锁定参数，普通配置不受影响 |
 | `VITE_SHOW_PRESET_CONFIG_ONLY=true` | `SHOW_PRESET_CONFIG_ONLY=true` | 只允许使用当前预置配置，禁止创建、复制、删除、拖动配置，禁止切换供应商和管理自定义供应商；未开启锁定时参数仍可编辑，API Key 始终可编辑 |

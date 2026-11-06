@@ -20,6 +20,7 @@ function config() {
     apiKey: 'server-secret',
     model: 'server-model',
     imageGenerationModel: 'server-image-model',
+    svgModel: 'server-svg-model',
     timeout: 123,
     apiMode: 'responses',
     reasoningEffort: 'medium',
@@ -74,6 +75,7 @@ describe('server settings', () => {
     expect(settings.baseUrl).toBe('https://server.example/v1')
     expect(settings.model).toBe('server-model')
     expect(settings.profiles[0].imageGenerationModel).toBe('server-image-model')
+    expect(settings.profiles[0].svgModel).toBe('server-svg-model')
     expect(settings.timeout).toBe(123)
     expect(settings.apiMode).toBe('responses')
     expect(settings.profiles[0].isDefault).toBe(true)
@@ -163,6 +165,8 @@ describe('server settings', () => {
     expect(applied.profiles[1].apiKey).toBe('')
     expect(applied.profiles[0].reasoningEffort).toBe('medium')
     expect(applied.profiles[0].imageGenerationModel).toBe('server-image-model')
+    expect(applied.profiles[0].svgModel).toBe('server-svg-model')
+    expect(stripServerSettingsApiKeys(applied).profiles[0].svgModel).toBe('server-svg-model')
     expect(applied.profiles[0].responseFormatB64Json).toBe(true)
     expect(applied.profiles[0].transparentBackgroundMethod).toBe('local')
   })
@@ -256,6 +260,27 @@ describe('server settings', () => {
     expect(settings.alwaysShowRetryButton).toBe(alwaysShowRetryButton)
     expect(settings.model).toBe('server-model')
     expect(settings.apiKey).toBe('')
+  })
+
+  it('keeps appearance, privacy, update and client preferences local', () => {
+    const preferences = {
+      saveTasksToActiveFavoriteCollection: false,
+      autoCheckUpdate: false,
+      writeLogFile: false,
+      privacyModeShortcut: 'Ctrl+Alt+P',
+      colorMode: 'light' as const,
+      uiFont: 'custom' as const,
+      uiFontName: 'Arial',
+      monoFont: 'system' as const,
+      monoFontName: 'Consolas',
+      saveLocationMode: 'default' as const,
+    }
+    const local = getLocalPreferenceSettings(normalizeSettings(preferences))
+    const settings = applyLocalPreferenceSettings(parseServerSettingsConfig(config()), local)
+
+    expect(local).toMatchObject(preferences)
+    expect(settings).toMatchObject(preferences)
+    expect(settings.profiles[0]).toMatchObject({ model: 'server-model', svgModel: 'server-svg-model', apiKey: '' })
   })
 
   it('loads the fixed same-origin URL without cache', async () => {

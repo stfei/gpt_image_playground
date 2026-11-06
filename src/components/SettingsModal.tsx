@@ -1149,7 +1149,7 @@ export default function SettingsModal() {
           </div>
         </div>
 
-        <div className="shrink-0 border-b border-gray-100 bg-blue-50/50 px-5 py-3 dark:border-white/[0.08] dark:bg-blue-500/[0.04]">
+        {!isTauri && <div className="shrink-0 border-b border-gray-100 bg-blue-50/50 px-5 py-3 dark:border-white/[0.08] dark:bg-blue-500/[0.04]">
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="text-sm font-medium text-gray-700 dark:text-gray-200">默认服务</div>
@@ -1172,7 +1172,7 @@ export default function SettingsModal() {
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${defaultServiceEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
             </button>
           </div>
-        </div>
+        </div>}
 
         <div className="flex flex-1 min-h-0 flex-col sm:flex-row">
           {/* Sidebar */}

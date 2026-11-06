@@ -660,7 +660,7 @@ export const useStore = create<AppState>()(
       restorePresetProvider: (id) => set((state) => ({
         dismissedPresetProviderIds: state.dismissedPresetProviderIds.filter((item) => item !== id),
       })),
-      defaultServiceEnabled: true,
+      defaultServiceEnabled: !isTauri,
       customSettingsBackup: null,
       serverSettingsCache: null,
       defaultServiceApiKey: null,
@@ -788,7 +788,7 @@ export const useStore = create<AppState>()(
         })
       },
       setDefaultServiceEnabled: (defaultServiceEnabled) => set((st) => {
-        if (defaultServiceEnabled === st.defaultServiceEnabled) return {}
+        if (isTauri || defaultServiceEnabled === st.defaultServiceEnabled) return {}
 
         if (!defaultServiceEnabled) {
           const restored = applyLocalPreferenceSettings(
@@ -840,6 +840,7 @@ export const useStore = create<AppState>()(
         }
       }),
       injectServerSettings: (serverSettings) => set((st) => {
+        if (isTauri) return {}
         const serverSettingsCache = stripServerSettingsApiKeys({
           ...serverSettings,
           profiles: serverSettings.profiles.map((profile) => {

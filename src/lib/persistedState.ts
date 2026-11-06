@@ -5,6 +5,7 @@ import { ensureDefaultFavoriteCollection, normalizeFavoriteCollections, resolveD
 import { cleanStaleAgentInputDrafts, getPersistableAgentInputDrafts, isEmptyAgentInputDraft, normalizeAgentInputDraft, normalizeAgentInputDrafts, normalizeAgentInputDraftsByKey, saveGalleryInputDraft } from './inputDraftState'
 import { getPersistableAgentConversations, stripPersistedAgentConversations } from './agentResponseState'
 import { isHttpUrl } from './imageApiShared'
+import { isTauri } from './platform'
 import {
   applyLocalPreferenceSettings,
   applyServerSettingsApiKey,
@@ -176,7 +177,9 @@ export function createPersistedState(state: PersistedStateSource, includeLegacyA
 
 export function migratePersistedState(persistedState: unknown, _version?: number): unknown {
   if (!isRecord(persistedState)) return persistedState
-  const settings = normalizeSettings(persistedState.settings ?? DEFAULT_SETTINGS)
+  const settings = normalizeSettings(
+    (isTauri && persistedState.defaultServiceEnabled === true ? persistedState.customSettingsBackup : null) ?? persistedState.settings ?? DEFAULT_SETTINGS,
+  )
   const activeProfile = getActiveApiProfile(settings)
   const defaultServiceApiKey = isRecord(persistedState.defaultServiceApiKey) &&
     typeof persistedState.defaultServiceApiKey.value === 'string'
@@ -187,9 +190,9 @@ export function migratePersistedState(persistedState: unknown, _version?: number
   return {
     ...persistedState,
     agentConversations: stripPersistedAgentConversations(persistedState.agentConversations),
-    defaultServiceEnabled: typeof persistedState.defaultServiceEnabled === 'boolean'
+    defaultServiceEnabled: !isTauri && (typeof persistedState.defaultServiceEnabled === 'boolean'
       ? persistedState.defaultServiceEnabled
-      : true,
+      : true),
     customSettingsBackup: persistedState.customSettingsBackup ?? settings,
     serverSettingsCache: persistedState.serverSettingsCache
       ? stripServerSettingsApiKeys(persistedState.serverSettingsCache)
@@ -208,7 +211,9 @@ export function normalizePersistedState(
 ): PersistedStateMergePlan | null {
   if (!isRecord(persistedState)) return null
 
-  const persistedSettings = normalizeSettings(persistedState.settings ?? fallback.settings)
+  const persistedSettings = normalizeSettings(
+    (isTauri && persistedState.defaultServiceEnabled === true ? persistedState.customSettingsBackup : null) ?? persistedState.settings ?? fallback.settings,
+  )
   const previousPresetConfig = isRecord(persistedState.previousPresetConfig) && Array.isArray(persistedState.previousPresetConfig.profiles)
     ? (() => {
         const normalized = normalizeSettings(persistedState.previousPresetConfig)
@@ -220,9 +225,9 @@ export function normalizePersistedState(
         }
       })()
     : null
-  const defaultServiceEnabled = typeof persistedState.defaultServiceEnabled === 'boolean'
+  const defaultServiceEnabled = !isTauri && (typeof persistedState.defaultServiceEnabled === 'boolean'
     ? persistedState.defaultServiceEnabled
-    : fallback.defaultServiceEnabled ?? false
+    : fallback.defaultServiceEnabled ?? false)
   const customSettingsBackup = persistedState.customSettingsBackup
     ? normalizeSettings(persistedState.customSettingsBackup)
     : fallback.customSettingsBackup

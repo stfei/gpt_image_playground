@@ -169,6 +169,7 @@ describe('persisted state codec', () => {
       apiKey: 'server-secret-selected',
       model: 'server-model',
       imageGenerationModel: 'server-image-model',
+      svgModel: 'server-svg-model',
       selectedModel: 'server-model',
       apiMode: 'responses',
       reasoningEffort: 'medium',
@@ -191,6 +192,16 @@ describe('persisted state codec', () => {
       showBatchPrompt: true,
       alwaysShowRetryButton: true,
       retryMode: 'overwriteAll',
+      saveTasksToActiveFavoriteCollection: false,
+      autoCheckUpdate: false,
+      writeLogFile: false,
+      privacyModeShortcut: 'Ctrl+Alt+P',
+      colorMode: 'light',
+      uiFont: 'custom',
+      uiFontName: 'Arial',
+      monoFont: 'system',
+      monoFontName: 'Consolas',
+      saveLocationMode: 'default',
       batchPromptEnabled: true,
       batchPromptMode: 'concurrent',
       batchPromptConcurrencyLimited: false,
@@ -220,6 +231,7 @@ describe('persisted state codec', () => {
     })
     expect(encoded.defaultServiceApiKey).toEqual({ value: 'local-key' })
     expect(encoded.localPreferenceSettings.retryMode).toBe('overwriteAll')
+    expect(encoded.serverSettingsCache?.profiles[1].svgModel).toBe('server-svg-model')
 
     const result = normalizePersistedState(encoded, fallback(), 100)!
 
@@ -248,6 +260,8 @@ describe('persisted state codec', () => {
     })
     expect(result.state.settings.profiles[1].selectedModel).toBe('server-model')
     expect(result.state.customSettingsBackup?.model).toBe('custom-model')
+    expect(result.state.settings).toMatchObject(getLocalPreferenceSettings(customSettings))
+    expect(result.state.settings.profiles[1].svgModel).toBe('server-svg-model')
   })
 
   it('restores the shared key for server-selected Agent profiles without adding it to the cache', () => {

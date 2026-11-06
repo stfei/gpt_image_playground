@@ -189,22 +189,59 @@ describe('tauriStorage', () => {
     expect(invoke).toHaveBeenCalledTimes(1)
   })
 
-  it('store 加载时同步完成 hydration，修改后以相同的 key 和格式写回', async () => {
-    const persisted = JSON.stringify({ state: { supportPromptDismissed: true, agentSidebarCollapsed: true }, version: 2 })
+  it('store 同步恢复版本 2 的本地设置，保留备份并以版本 4 写回', async () => {
+    const persisted = JSON.stringify({ state: {
+      supportPromptDismissed: true,
+      agentSidebarCollapsed: true,
+      settings: {
+        profiles: [{ id: 'main-profile', name: '本地配置', baseUrl: 'https://local.example/v1', apiKey: 'old-local-key', model: 'local-model' }],
+        activeProfileId: 'main-profile',
+        colorMode: 'light',
+        uiFont: 'system',
+        privacyModeShortcut: '',
+      },
+    }, version: 2 })
     // setup 已在导入 store 之前把 kv 读入内存，与 main.tsx 的启动顺序一致
     await setup({ 'gpt-image-playground': persisted })
     const { useStore } = await import('../store')
     expect(useStore.persist.hasHydrated()).toBe(true)
     expect(useStore.getState().supportPromptDismissed).toBe(true)
     expect(useStore.getState().agentSidebarCollapsed).toBe(true)
+    expect(useStore.getState().defaultServiceEnabled).toBe(false)
+    expect(useStore.getState().settings.profiles[0]).toMatchObject({ id: 'main-profile', apiKey: 'old-local-key', model: 'local-model' })
+    expect(useStore.getState().settings).toMatchObject({ colorMode: 'light', uiFont: 'system', privacyModeShortcut: '' })
 
     useStore.setState({ agentSidebarCollapsed: false })
     await vi.advanceTimersByTimeAsync(300)
     const write = invoke.mock.calls.find(([cmd]) => cmd === 'kv_set')
     expect(write?.[1].key).toBe('gpt-image-playground')
     const saved = JSON.parse(write?.[1].value)
-    expect(saved.version).toBe(2)
+    expect(saved.version).toBe(4)
     expect(saved.state.agentSidebarCollapsed).toBe(false)
     expect(saved.state.supportPromptDismissed).toBe(true)
+    expect(saved.state.customSettingsBackup.profiles[0]).toMatchObject({ id: 'main-profile', apiKey: 'old-local-key', model: 'local-model' })
+    expect(saved.state.defaultServiceApiKey).toEqual({ value: 'old-local-key' })
+    expect(saved.state.localPreferenceSettings).toMatchObject({ colorMode: 'light', uiFont: 'system', privacyModeShortcut: '' })
+  })
+
+  it('客户端恢复版本 4 时使用自定义备份，忽略网页版默认服务', async () => {
+    const persisted = JSON.stringify({ state: {
+      defaultServiceEnabled: true,
+      settings: { profiles: [{ id: 'server', model: 'server-model' }], activeProfileId: 'server' },
+      customSettingsBackup: {
+        profiles: [{ id: 'local', apiKey: 'local-key', model: 'local-model' }],
+        activeProfileId: 'local',
+      },
+      localPreferenceSettings: { colorMode: 'dark', uiFont: 'system' },
+    }, version: 4 })
+    await setup({ 'gpt-image-playground': persisted })
+    const { useStore } = await import('../store')
+
+    expect(useStore.getState().defaultServiceEnabled).toBe(false)
+    expect(useStore.getState().settings).toMatchObject({ activeProfileId: 'local', apiKey: 'local-key', model: 'local-model', colorMode: 'dark', uiFont: 'system' })
+    useStore.getState().setDefaultServiceEnabled(true)
+    expect(useStore.getState().defaultServiceEnabled).toBe(false)
+    useStore.getState().injectServerSettings(useStore.getState().settings)
+    expect(useStore.getState().serverSettingsCache).toBeNull()
   })
 })

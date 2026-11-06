@@ -10,6 +10,9 @@ ENV SHOW_PRESET_CONFIG_ONLY=false
 ENV LOCK_PRESET_CONFIG_PARAMS=false
 ENV PREVENT_PRESET_CONFIG_DELETION=false
 ENV SHOW_DEFAULT_CONFIG_ONLY=false
+ENV DEFAULT_UI_FONT=
+ENV DEFAULT_MONO_FONT=
+ENV BUILTIN_FONT_SOURCE=
 
 COPY dist/ /usr/share/nginx/html/
 COPY deploy/nginx.conf /etc/nginx/templates/default.conf.template

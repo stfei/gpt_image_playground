@@ -72,6 +72,8 @@ export function promptImportLink(input: string | URLSearchParams, opened = false
           const state = useStore.getState()
           const before = normalizeSettings(state.settings)
           state.setSettings(await applyUrlSettings(state.settings, params))
+          const apiKey = params.get('apiKey')
+          if (state.defaultServiceEnabled && apiKey !== null) state.setDefaultServiceApiKey(apiKey.trim())
           // 以写入后 store 中的实际结果判断，部署策略可能把修改还原
           const after = normalizeSettings(useStore.getState().settings)
           if (JSON.stringify(after) === JSON.stringify(before)) return

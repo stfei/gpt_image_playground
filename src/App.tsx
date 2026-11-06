@@ -242,7 +242,7 @@ export default function App() {
         setPresetConfig(null)
       })
       .finally(async () => {
-        await loadAndApplyServerSettings()
+        if (!isTauri) await loadAndApplyServerSettings()
         // 不等待用户确认，客户端的剪贴板和 deep link 监听依赖它
         setStartupImportDone(true)
         // 预置配置写入后再提示，确认框按导入前的实际设置描述变化
