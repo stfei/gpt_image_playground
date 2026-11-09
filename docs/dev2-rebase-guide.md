@@ -4,10 +4,10 @@
 
 ## 1. 当前基线与使用范围
 
-- 整理日期：2026-11-06。
-- 主线基线：`main` 的 `7ae7dec`，对应 `v0.8.8` 标签。
-- 功能基线：`dev2` 的 `c26aaab`，相对上述主线有 12 个提交（原有 11 个提交及本轮兼容提交）；本文档的本轮更新另计。
-- 最近一次变基恢复分支：`codex/dev2-before-main-rebase-20261106`，指向变基前的 `253176e`。此前恢复分支仍保留；下次变基另建恢复分支，不覆盖已有恢复点。
+- 整理日期：2026-11-09。
+- 主线基线：`main` 的 `6f8f44d`，应用版本 `0.9.0`；`v0.9.0` 标签为 `5e1f5e7`，主线还包含标签之后的文档和设置说明修正。
+- 功能基线：`dev2` 的 `58c6cd7`，相对上述主线有 14 个提交（原有 13 个提交及本轮兼容提交）；本文档的本轮更新另计。
+- 最近一次变基恢复分支：`codex/dev2-before-main-rebase-20261109`，指向变基前的 `e989955`。此前恢复分支仍保留；下次变基另建恢复分支，不覆盖已有恢复点。
 - 本地变基不等于推送。变基后 `dev2` 与 `my/dev2` 的旧历史出现 ahead/behind 属于可能的正常结果，不能据此直接拉取、合并或强推。
 
 提交哈希、版本、模型 ID 和业务配置是当前快照，不是下次变基必须照搬的常量。功能行为以当前实现及测试为准；新增需求应同步更新本文。
@@ -38,7 +38,7 @@
 - 加载失败、HTTP 错误或配置无效时保留上次有效服务器缓存；没有缓存时使用内置设置，并提示用户。不能以错误响应覆盖有效缓存。
 - `serverSettingsCache` 在创建、恢复和更新时均清除顶层和全部 profile 的 API Key。
 - `app-config.json` 是公开的前端配置，不能放置服务端秘密。`providerDrafts` 是浏览器供应商草稿，不写入部署配置。
-- URL 参数沿用主线的导入差异确认流程，先从地址栏清除，再提示用户。明确的 `apiKey` 参数仅在用户确认后写入 Web 的单一本地 Key；取消不能修改 Key，链接中的 URL/模型不能覆盖服务器受控参数。
+- URL 参数沿用主线的导入差异和复用策略，先从地址栏清除。默认对实际配置变更提示确认，取消不能修改 Key；相同配置直接复用，部署设置 `VITE_SHOW_CONFIG_CHANGE_DIALOG=false` 时直接导入。无论是否确认，明确的 `apiKey` 参数都只写入 Web 的单一本地 Key，链接中的 URL/模型不能覆盖服务器受控参数。
 
 ### 3.2 服务器参数与 API 新属性
 
@@ -47,6 +47,7 @@
 | 字段或字段组 | 当前语义与保留要求 |
 | --- | --- |
 | `profiles`、`customProviders`、`activeProfileId` | 保留业务 profile 和稳定 ID；画廊由 `activeProfileId` 决定。 |
+| `provider`、`customProviders[].modelOverrides` | 支持主线的 Google/xAI 类型及按模型通配符选择 submit/editSubmit/poll；解析、Key 注入和缓存不能丢失原生类型或异步映射。 |
 | `isDefault` | 部署默认标记，与活动 ID 不是同一个字段；多配置示例只标记一个默认项，建议与画廊活动项一致。 |
 | `model`、`selectedModel` | `model` 支持中英文逗号分隔的模型列表；`selectedModel` 是列表内的当前选择，不是可任意填写的新模型。 |
 | `imageGenerationModel` | Responses API 的 `image_generation` 工具模型，与文本模型分开；留空时不发送工具模型 ID。 |
@@ -62,6 +63,8 @@
 当前主线默认图像模型为 `gpt-image-2.6-sunburst`，默认 Responses/SVG 文本模型为 `gpt-6.1-sol`；部署文件显式指定的业务模型仍优先使用，不因主线缺省值更新而自动替换。当前业务文件保留 `gpt-image-2.5-sunburst` 等原值；如需使用复杂度、SVG 或 GIF，部署者需选择支持这些能力的 2.6 或更新模型，不能仅补字段就声称上游可用。
 
 `complexity`、`frame_count`、`frame_duration_ms` 和 SVG/GIF 的 `output_format` 属于任务参数，继续使用主线 `TaskParams` 和参数归一化，不把它们误写成 API profile 属性。
+
+v0.9.0 的 `aspect_ratio`、`resolution`、`google_search`、`image_search`、`thinking_level` 也属于任务参数。保留它们的持久化以及任务的 `searchGrounding`、`promptHints`、`paramSupport`，请求与界面继续由主线按供应商/模型判断支持情况。现有业务文件不自动增加 Google/xAI profile 或修改模型。
 
 ### 3.3 默认服务开关、持久化与 Key 隔离
 
@@ -102,7 +105,7 @@
 
 默认服务下允许编辑本地 Key 和下列本地偏好；这些偏好在服务器更新、模式切换和持久化恢复后仍应保留：
 
-- 输入与任务习惯：`clearInputAfterSubmit`、`persistInputOnRestart`、`reuseTaskApiProfileTemporarily`、`alwaysShowRetryButton`、`retryMode`、`allowPromptRewrite`、`taskCompletionNotification`、`enterSubmit`。
+- 输入与任务习惯：`clearInputAfterSubmit`、`persistInputOnRestart`、`reuseTaskApiProfileTemporarily`、`alwaysShowRetryButton`、`retryMode`、`allowPromptRewrite`、`imagePromptHints`、`taskCompletionNotification`、`enterSubmit`。
 - 批量提交：`showBatchPrompt`、`batchPromptEnabled`、`batchPromptMode`、`batchPromptConcurrencyLimited`、`batchPromptConcurrency`。
 - 参考图编辑：`referenceImageEditAction`，可选 `ask` / `sketch` / `mask`。
 - 下载及 Agent 显示习惯：`zipDownloadRoutes`、`agentScrollToBottomAfterSubmit`、`agentMathFormattingPrompt`。
@@ -144,6 +147,10 @@ npm run build
 
 主线字体变量也须贯穿整条链路：构建端的 `VITE_DEFAULT_UI_FONT`、`VITE_DEFAULT_MONO_FONT`、`VITE_BUILTIN_FONT_SOURCE` 使用占位符；Dockerfile 和 Compose 提供 `DEFAULT_UI_FONT`、`DEFAULT_MONO_FONT`、`BUILTIN_FONT_SOURCE`，启动脚本负责替换。保留 Nginx 的字体 MIME/gzip 配置，字体文件随 Vite 产物打包。
 
+导入确认变量同样需要贯穿：`VITE_SHOW_CONFIG_CHANGE_DIALOG` 构建占位符对应运行时 `SHOW_CONFIG_CHANGE_DIALOG`，默认 `true`，设置 `false` 时允许直接导入变更。当前 dist 脚本共 12 项占位符，不能只在 Compose 加变量而遗漏前端编译。
+
+保留主线 Nginx 对 `/api-proxy/tasks/...` 的 GET/HEAD 轮询支持和其余 GET 路径的限制；不能恢复仅 POST 的旧代理块，否则新的异步图像任务无法查询结果。
+
 - 脚本默认安装依赖、编译、构建镜像并启动/重建容器；它不是只读校验命令。
 - `-BuildOnly` 不启动容器，但仍会构建镜像且要求 Docker daemon 可用；`-SkipInstall` 和 `-NoCache` 的原有行为应保留。
 - 只验证配置时使用 `docker compose -f deploy/docker-compose.dist.yml config`，不要执行 `up`。配置展开通过不能代替容器和上游请求实测。
@@ -158,15 +165,17 @@ npm run build
 - 核对主线 Agent 对话、输入草稿、收藏、任务状态、画板、批量提交、多模型、重试方式、预置 Agent 配置等新增功能，以及各供应商的请求逻辑。涉及同一文件不等于应以 dev2 整文件替换。
 - 覆盖式重试保留任务 ID、创建时间及收藏，清除旧结果并以 `startedAt` 计算本次耗时/超时；旧请求迟到响应不能覆盖新执行。Agent 图片任务始终新建，运行中及自动恢复中的任务不可重试。这些主线语义不能被旧 store 实现覆盖。
 - 保留 v0.8.8 的桌面客户端、CLI/Skill、字体/颜色、隐私模式、收藏夹自动归档、链接导入确认、2.6 模型参数及 markup 图层能力；服务器模式只限制部署拥有的配置，不应误伤本地习惯。
+- 保留 v0.9.0 的 Google/xAI 图像接口、自定义模型映射、图像异步任务、搜索来源、提示词附加内容及任务详情展示。不能以移植服务器设置为由回退 API 路由、模型能力判断或参数面板。
 
 优先检查 [types.ts](../src/types.ts)、[apiProfiles.ts](../src/lib/apiProfiles.ts)、[persistedState.ts](../src/lib/persistedState.ts)、[presetConfig.ts](../src/lib/presetConfig.ts)、[InputBar.tsx](../src/components/InputBar.tsx)、[SketchBoardModal.tsx](../src/components/SketchBoardModal.tsx)、[GeneralSettingsTab.tsx](../src/components/settings/GeneralSettingsTab.tsx) 的主线变化，再检查 dev2 接入点。
 
 ## 6. 已被后续修改取代的历史行为
 
-- `9e49932` 曾允许手动切换服务器活动 profile 并记忆 ID；后续 `43f2602` 改为画廊/Agent 自动分流。不能按早期提交标题重新添加 `setDefaultServiceActiveProfile` 或记忆手动活动 ID。
+- `154dd23` 曾允许手动切换服务器活动 profile 并记忆 ID；后续 `9c08ce9` 改为画廊/Agent 自动分流。不能按早期提交标题重新添加 `setDefaultServiceActiveProfile` 或记忆手动活动 ID。
 - 早期方案曾因当时主线移除字段而删除 `referenceImageEditAction`；新版主线重新引入该字段支持画板/蒙版，当前必须保留并作为本地偏好。
 - 早期服务器活动项、Agent 模式、模型和 `codexCli` 值可能与当前业务文件不同；以最终部署示例和测试为准。
 - 最初“3 个逻辑提交”的历史目标不再对应当前分支的实际提交数量。下次应保留全部有效增量，不自行压缩或丢弃后续提交。
+- v0.8.8 的“链接总是先确认”说明不再是当前行为；保留主线的相同配置复用与部署端关闭确认能力，同时保持服务器参数和 Key 隔离。
 
 ## 7. 下次变基的检查步骤
 
@@ -187,7 +196,7 @@ npm run build
 ```powershell
 npm run build
 npm test -- --run src/lib/serverSettings.test.ts src/lib/persistedState.test.ts src/store.test.ts src/lib/apiProfiles.test.ts src/lib/presetAgent.test.ts src/lib/devProxy.test.ts src/lib/taskState.test.ts
-npm test -- --run src/lib/tauriStorage.test.ts src/hooks/useImportLinks.test.ts src/lib/paramCompatibility.test.ts
+npm test -- --run src/lib/tauriStorage.test.ts src/hooks/useImportLinks.test.ts src/hooks/useServerSettingsImport.test.ts src/lib/paramCompatibility.test.ts src/lib/nativeImageApi.test.ts
 npm test -- --run
 git diff --check
 Get-Content public/app-config.json -Raw | ConvertFrom-Json | Out-Null
@@ -216,7 +225,10 @@ if ($deployErrors.Count) { throw ($deployErrors | Out-String) }
 - 批量、画板及其它本地习惯跨服务器刷新/模式切换保留；主线预置 Agent 字段和任务临时模型状态正确处理。
 - 重试偏好合法值/旧数据缺省/非法值回退，关闭成功任务重试后的降级；默认服务下覆盖式重试使用服务器 profile 与本地 Key，缓存仍无 Key。
 - 颜色、字体、快捷键、自动更新、日志、保存位置和收藏夹偏好的逐字段修改及跨刷新/模式恢复；桌面旧版本 2 数据和带服务器标记的版本 4 数据恢复。
-- 链接 Key 的确认/取消及自定义模式原有导入行为；受控 API 参数不能被链接覆盖。
+- 链接 Key 的确认/取消、关闭确认后的直接导入及自定义模式原有导入行为；相同配置复用和切换提示保留；受控 API 参数不能被链接覆盖。
+- Google/xAI profile 经解析、Key 注入和缓存后保留供应商及选择；自定义服务商的模型通配符和异步 poll 映射不丢失；新增搜索与原生图像参数可持久化。
+
+主线的 `useImportLinks.test.ts` 使用 mock store；服务器隔离测试在 `useServerSettingsImport.test.ts` 使用真实 store。两套测试分开，避免模块 mock 影响服务器行为验证。
 
 ### 7.3 手动验收与未实测边界
 
@@ -235,18 +247,20 @@ if ($deployErrors.Count) { throw ($deployErrors | Out-String) }
 
 | 当前提交 | 功能来源 |
 | --- | --- |
-| `076b062` | 服务器下发设置、默认服务、本地习惯/Key/备份隔离、持久化与测试。 |
-| `728e446` | dist Dockerfile、Compose、PowerShell 构建脚本及部署防护。 |
-| `49b108c` | 站点品牌与页头链接。 |
-| `1df4b0a` | 业务部署配置调整。 |
-| `9e49932` | 历史服务器 profile 切换及密钥隔离；手动切换部分已被后续提交取代。 |
-| `e271a5e` | 前端代理构建方法及环境变量文档。 |
-| `8d954aa` | 服务器配置与图片工具模型相关配置/说明调整。 |
-| `43f2602` | 画廊与 Agent 自动分流及最终业务配置/文档。 |
-| `388a00d` | 主线多模型选择、批量与画板本地偏好、预置 Agent 持久化兼容。 |
-| `3792ed3` | 主线重试方式的服务器模式本地偏好、配置示例及持久化/实际调用回归覆盖。 |
-| `d4de2e1` | 首版功能保留文档与 README 入口。 |
-| `c26aaab` | v0.8.8 新偏好、SVG 模型、链接确认、Web/桌面隔离、版本 2/4 迁移及 dist 字体部署兼容。 |
+| `3b11ea6` | 服务器下发设置、默认服务、本地习惯/Key/备份隔离、持久化与测试。 |
+| `a9ce703` | dist Dockerfile、Compose、PowerShell 构建脚本及部署防护。 |
+| `7193a56` | 站点品牌与页头链接。 |
+| `372720e` | 业务部署配置调整。 |
+| `154dd23` | 历史服务器 profile 切换及密钥隔离；手动切换部分已被后续提交取代。 |
+| `32e4ffd` | 前端代理构建方法及环境变量文档。 |
+| `15cf822` | 服务器配置与图片工具模型相关配置/说明调整。 |
+| `9c08ce9` | 画廊与 Agent 自动分流及最终业务配置/文档。 |
+| `52f11e2` | 主线多模型选择、批量与画板本地偏好、预置 Agent 持久化兼容。 |
+| `4a6b1c6` | 主线重试方式的服务器模式本地偏好、配置示例及持久化/实际调用回归覆盖。 |
+| `b3f0ef8` | 首版功能保留文档与 README 入口。 |
+| `665d2fa` | v0.8.8 新偏好、SVG 模型、链接确认、Web/桌面隔离、版本 2/4 迁移及 dist 字体部署兼容。 |
+| `8bb16c0` | v0.8.8 变基清单与验证记录。 |
+| `58c6cd7` | v0.9.0 图像提示词偏好、确认弹窗运行变量、多供应商及模型映射/持久化回归覆盖。 |
 
 ## 9. v0.7.17 变基验证记录（2026-10-09）
 
@@ -267,3 +281,15 @@ if ($deployErrors.Count) { throw ($deployErrors | Out-String) }
 - PowerShell 部署脚本语法、服务器 JSON/空 Key/SVG 属性、Compose 配置展开和 `git diff --check` 通过；未启动容器。
 - Rust 工程、依赖锁文件、现有第三方许可清单、CLI、原生请求、API 参数、隐私/外观核心和输入/画板组件与主线一致。
 - 本机没有 Rust/Cargo，`npm run notices` 因 `cargo ENOENT` 未能重新生成，保留主线清单；Windows 安装包/原生运行、浏览器交互、容器运行和真实上游 API 请求未实测。
+
+## 11. v0.9.0 变基验证记录（2026-11-09）
+
+- 使用已获取的最新 `main`：`6f8f44d`，包含标签 `5e1f5e7` 之后的 4 个修正提交；远端 dev2 没有未知新增提交，未推送。
+- 原有 13 个提交全部重放。首个服务器提交仅随新版供应商界面和行高调整上下文；v0.8.8 兼容提交将服务器导入测试独立成文件，主线新增的导入测试原样保留。
+- 增加 `imagePromptHints: true` 部署示例并接入本地偏好，覆盖逐字段修改、服务器刷新、持久化和模式切换；保留既有业务模型。
+- 补齐 `SHOW_CONFIG_CHANGE_DIALOG` 的 Dockerfile、Compose 与前端占位符，默认开启；关闭确认后的 Key 注入仍不能覆盖服务器 URL/模型，缓存不含 Key。
+- Node 24.19.0 下普通生产构建通过；最终 dist 构建的全部 12 项运行时占位符校验通过。
+- 定向测试 9 个文件、393 项通过；完整测试 72 个文件通过，1083 项通过、1 项为主线原有跳过项。
+- PowerShell 语法和 Compose 配置展开通过；版本/Service Worker、业务配置、差异格式及主线核心文件一致性检查通过，未启动容器。
+- Google/xAI API、模型映射、异步任务、搜索及详情模块、Rust 工程和依赖锁文件与主线一致；依赖仅随主线更新应用版本，没有增减依赖，保留主线许可清单。
+- 本机仍无 Rust/Cargo；桌面安装包/原生运行、浏览器交互、容器运行和真实上游 API 未实测。
