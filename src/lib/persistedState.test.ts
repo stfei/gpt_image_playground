@@ -193,6 +193,7 @@ describe('persisted state codec', () => {
       alwaysShowRetryButton: true,
       retryMode: 'overwriteAll',
       saveTasksToActiveFavoriteCollection: false,
+      imagePromptHints: false,
       autoCheckUpdate: false,
       writeLogFile: false,
       privacyModeShortcut: 'Ctrl+Alt+P',
@@ -262,6 +263,21 @@ describe('persisted state codec', () => {
     expect(result.state.customSettingsBackup?.model).toBe('custom-model')
     expect(result.state.settings).toMatchObject(getLocalPreferenceSettings(customSettings))
     expect(result.state.settings.profiles[1].svgModel).toBe('server-svg-model')
+  })
+
+  it('round-trips native image parameters with default service settings', () => {
+    const params = { ...DEFAULT_PARAMS, aspect_ratio: '16:9', resolution: '2K', google_search: true, image_search: true, thinking_level: 'high' as const }
+    const encoded = createPersistedState({
+      ...source(),
+      params,
+      defaultServiceEnabled: true,
+      serverSettingsCache: DEFAULT_SETTINGS,
+      localPreferenceSettings: getLocalPreferenceSettings(DEFAULT_SETTINGS),
+    })
+    const restored = normalizePersistedState(encoded, fallback(), 100)!
+
+    expect(restored.state.params).toEqual(params)
+    expect(restored.state.serverSettingsCache?.profiles.every((profile) => profile.apiKey === '')).toBe(true)
   })
 
   it('restores the shared key for server-selected Agent profiles without adding it to the cache', () => {

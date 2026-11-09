@@ -9,6 +9,7 @@
     "saveTasksToActiveFavoriteCollection": true,
     "retryMode": "new",
     "allowPromptRewrite": false,
+    "imagePromptHints": true,
     "taskCompletionNotification": false,
     "autoCheckUpdate": true,
     "writeLogFile": true,

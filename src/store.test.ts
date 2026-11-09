@@ -414,6 +414,7 @@ describe('default service settings', () => {
       localPreferenceSettings: getLocalPreferenceSettings(DEFAULT_SETTINGS),
     })
     const preferences = {
+      imagePromptHints: false,
       saveTasksToActiveFavoriteCollection: false,
       autoCheckUpdate: false,
       writeLogFile: false,

@@ -345,7 +345,9 @@ npm run deploy:cf
 
 新版 `svgModel` 是生成 SVG 时使用的文本模型，与图像 `model` 分开设置；缺省为 `gpt-6.1-sol`。SVG、GIF 和复杂度的可用性由主线按图像模型判断，需使用支持这些能力的 GPT Image 2.6 或更新模型。上例演示新版模型；仓库 `public/app-config.json` 中显式配置的业务模型仍予以保留，部署时可按上游支持情况调整。
 
-`saveTasksToActiveFavoriteCollection`、`privacyModeShortcut`、`colorMode`、`uiFont` / `uiFontName`、`monoFont` / `monoFontName`，以及客户端的 `saveLocationMode`、`writeLogFile` 和更新检查 `autoCheckUpdate` 也作为本地偏好保留，默认服务下可修改，服务器刷新不会覆盖。客户端网络代理仍使用主线独立的本机代理设置，不与网页版 `/api-proxy/` 混用。链接中的 `apiKey` 先由用户确认再写入本地 Key，不能借链接修改服务器参数。
+`saveTasksToActiveFavoriteCollection`、`privacyModeShortcut`、`colorMode`、`uiFont` / `uiFontName`、`monoFont` / `monoFontName`，以及客户端的 `saveLocationMode`、`writeLogFile` 和更新检查 `autoCheckUpdate` 也作为本地偏好保留，默认服务下可修改，服务器刷新不会覆盖。客户端网络代理仍使用主线独立的本机代理设置，不与网页版 `/api-proxy/` 混用。链接按部署策略确认或直接导入，`apiKey` 写入本地 Key，服务器参数仍保持只读。
+
+图像提示词开关 `imagePromptHints` 属于本地习惯配置，默认开启，可在默认服务下修改并跨刷新保留。服务器配置支持 Google、xAI 和自定义服务商的 `modelOverrides`，使用方式沿用主线配置说明，不会自动替换当前业务 profile。
 
 ```bash
 docker run -d -p 8080:80 \

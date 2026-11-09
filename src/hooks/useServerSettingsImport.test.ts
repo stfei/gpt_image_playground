@@ -27,6 +27,7 @@ describe('server settings import confirmation', () => {
   })
 
   afterEach(async () => {
+    vi.unstubAllEnvs()
     useStore.getState().setConfirmDialog(null)
     await Promise.resolve()
     localStorage.clear()
@@ -62,5 +63,16 @@ describe('server settings import confirmation', () => {
 
     expect(useStore.getState().settings).toMatchObject({ apiKey: 'custom-key', baseUrl: 'https://custom.example/v1' })
     expect(useStore.getState().defaultServiceApiKey).toEqual({ value: 'old-local-key' })
+  })
+
+  it('applies the shared key without a dialog when deployment disables confirmation', async () => {
+    vi.stubEnv('VITE_SHOW_CONFIG_CHANGE_DIALOG', 'false')
+    promptImportLink(new URLSearchParams({ apiKey: 'auto-local-key', apiUrl: 'https://blocked.example/v1', model: 'blocked-model' }), true)
+    await vi.waitFor(() => expect(useStore.getState().defaultServiceApiKey).toEqual({ value: 'auto-local-key' }))
+
+    expect(useStore.getState().confirmDialog).toBeNull()
+    expect(useStore.getState().settings).toMatchObject({ apiKey: 'auto-local-key', baseUrl: 'https://server.example/v1', model: 'server-model' })
+    expect(useStore.getState().serverSettingsCache?.profiles[0].apiKey).toBe('')
+    expect(useStore.getState().customSettingsBackup).toEqual(DEFAULT_SETTINGS)
   })
 })

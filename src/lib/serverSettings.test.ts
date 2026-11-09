@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import appConfig from '../../public/app-config.json'
 import { createDefaultOpenAIProfile, DEFAULT_SETTINGS, normalizeSettings } from './apiProfiles'
+import { resolveCustomProviderModel } from './imageProviderMappings'
 import {
   applyLocalPreferenceSettings,
   applyServerSettingsApiKey,
@@ -264,6 +265,7 @@ describe('server settings', () => {
 
   it('keeps appearance, privacy, update and client preferences local', () => {
     const preferences = {
+      imagePromptHints: false,
       saveTasksToActiveFavoriteCollection: false,
       autoCheckUpdate: false,
       writeLogFile: false,
@@ -281,6 +283,39 @@ describe('server settings', () => {
     expect(local).toMatchObject(preferences)
     expect(settings).toMatchObject(preferences)
     expect(settings.profiles[0]).toMatchObject({ model: 'server-model', svgModel: 'server-svg-model', apiKey: '' })
+  })
+
+  it.each(['google', 'xai'])('keeps native %s profiles and strips server keys', (provider) => {
+    const document = config()
+    Object.assign(document.settings.profiles[0], { provider, model: 'model-a, model-b', selectedModel: 'model-b' })
+    const settings = parseServerSettingsConfig(document)
+    const applied = applyServerSettingsApiKey(settings, { value: 'local-key' })
+
+    expect(applied.profiles[0]).toMatchObject({ provider, model: 'model-a, model-b', selectedModel: 'model-b', apiMode: 'images', codexCli: false, streamImages: false, transparentBackgroundMethod: 'local', apiKey: 'local-key' })
+    expect(stripServerSettingsApiKeys(applied).profiles[0]).toMatchObject({ provider, selectedModel: 'model-b', apiKey: '' })
+  })
+
+  it('keeps custom provider model overrides and async mappings in the keyless cache', () => {
+    const document = config()
+    Object.assign(document.settings, { customProviders: [{
+      id: 'custom-models',
+      name: '多模型服务',
+      submit: { path: 'images/generations' },
+      modelOverrides: [{
+        models: ['gemini-*'],
+        submit: { path: 'google/generate', taskIdPath: 'task.id' },
+        poll: { path: 'tasks/{task_id}', statusPath: 'status', result: { imageUrlPaths: ['imageUrl'] } },
+      }],
+    }] })
+    Object.assign(document.settings.profiles[0], { provider: 'custom-models', model: 'gpt-image-2.6-sunburst, gemini-image', selectedModel: 'gemini-image' })
+    const applied = applyServerSettingsApiKey(parseServerSettingsConfig(document), { value: 'local-key' })
+    const cached = stripServerSettingsApiKeys(applied)
+    const provider = resolveCustomProviderModel(cached.customProviders[0], 'gemini-image')
+
+    expect(cached.customProviders[0].modelOverrides?.[0].models).toEqual(['gemini-*'])
+    expect(provider.submit).toMatchObject({ path: 'google/generate', taskIdPath: 'task.id' })
+    expect(provider.poll).toMatchObject({ path: 'tasks/{task_id}', statusPath: 'status' })
+    expect(cached.profiles[0]).toMatchObject({ provider: 'custom-models', selectedModel: 'gemini-image', apiKey: '' })
   })
 
   it('loads the fixed same-origin URL without cache', async () => {

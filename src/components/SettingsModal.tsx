@@ -1294,7 +1294,7 @@ export default function SettingsModal() {
                         value={activeProfile.apiKey}
                         onChange={(e) => updateDefaultServiceApiKey(e.target.value)}
                         type={showApiKey ? 'text' : 'password'}
-                        placeholder={activeProfile.provider === 'fal' ? 'FAL_KEY' : 'sk-...'}
+                        placeholder={activeProfile.provider === 'google' ? 'AIza...' : activeProfile.provider === 'xai' ? 'xai-...' : activeProfile.provider === 'fal' ? 'FAL_KEY' : 'sk-...'}
                         className="w-full rounded-xl border border-gray-200/70 bg-white/80 px-3 py-2.5 pr-10 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-gray-200 dark:focus:border-blue-500/50"
                       />
                       <button
