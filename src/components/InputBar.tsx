@@ -107,6 +107,7 @@ export default function InputBar() {
   const setSettings = useStore((s) => s.setSettings)
   const batchProgress = useStore((s) => s.batchProgress)
   const settings = useStore((s) => s.settings)
+  const defaultServiceEnabled = useStore((s) => s.defaultServiceEnabled)
   const reusedTaskApiProfileId = useStore((s) => s.reusedTaskApiProfileId)
   const reusedTaskApiModel = useStore((s) => s.reusedTaskApiModel)
   const setReusedTaskApiModel = useStore((s) => s.setReusedTaskApiModel)
@@ -447,8 +448,8 @@ export default function InputBar() {
   ), [appMode, settings, settingsActiveProfile])
   const activeProfile = useMemo(() => getInputImageProfile({ settings, appMode, reusedTaskApiProfileId, reusedTaskApiModel }), [settings, appMode, reusedTaskApiProfileId, reusedTaskApiModel])
   const isTemporarilyReusedProfile = activeProfile.id !== currentActiveProfile.id
-  // 首页可选择其他勾选了展示在输入框模型列表中的配置；Agent 和临时复用其他配置时只列出当前配置
-  const canSwitchProfile = appMode === 'gallery' && !isTemporarilyReusedProfile
+  // 服务器模式、Agent 和临时复用只列出当前配置的模型
+  const canSwitchProfile = appMode === 'gallery' && !isTemporarilyReusedProfile && !defaultServiceEnabled
   const visibleModelGroups = useMemo(() => (
     getApiProfileModelGroups(settings, activeProfile.id, canSwitchProfile)
   ), [settings, activeProfile.id, canSwitchProfile])

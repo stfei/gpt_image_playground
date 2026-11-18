@@ -22,6 +22,8 @@ function config() {
     model: 'server-model',
     imageGenerationModel: 'server-image-model',
     svgModel: 'server-svg-model',
+    svgReasoningEffort: 'high',
+    showInModelList: true,
     timeout: 123,
     apiMode: 'responses',
     reasoningEffort: 'medium',
@@ -66,7 +68,7 @@ describe('server settings', () => {
       transparentBackgroundMethod: 'api',
       apiKey: '',
     })
-    expect(profile?.responseFormatB64Json).toBeUndefined()
+    expect(profile?.responseFormatB64Json).toBe(false)
   })
 
   it('loads compact profile settings and strips every API key', () => {
@@ -77,6 +79,8 @@ describe('server settings', () => {
     expect(settings.model).toBe('server-model')
     expect(settings.profiles[0].imageGenerationModel).toBe('server-image-model')
     expect(settings.profiles[0].svgModel).toBe('server-svg-model')
+    expect(settings.profiles[0].svgReasoningEffort).toBe('high')
+    expect(settings.profiles[0].showInModelList).toBe(true)
     expect(settings.timeout).toBe(123)
     expect(settings.apiMode).toBe('responses')
     expect(settings.profiles[0].isDefault).toBe(true)
@@ -168,6 +172,7 @@ describe('server settings', () => {
     expect(applied.profiles[0].imageGenerationModel).toBe('server-image-model')
     expect(applied.profiles[0].svgModel).toBe('server-svg-model')
     expect(stripServerSettingsApiKeys(applied).profiles[0].svgModel).toBe('server-svg-model')
+    expect(stripServerSettingsApiKeys(applied).profiles[0]).toMatchObject({ svgReasoningEffort: 'high', showInModelList: true })
     expect(applied.profiles[0].responseFormatB64Json).toBe(true)
     expect(applied.profiles[0].transparentBackgroundMethod).toBe('local')
   })
@@ -285,7 +290,7 @@ describe('server settings', () => {
     expect(settings.profiles[0]).toMatchObject({ model: 'server-model', svgModel: 'server-svg-model', apiKey: '' })
   })
 
-  it.each(['google', 'xai'])('keeps native %s profiles and strips server keys', (provider) => {
+  it.each(['google', 'xai', 'bytedance'])('keeps native %s profiles and strips server keys', (provider) => {
     const document = config()
     Object.assign(document.settings.profiles[0], { provider, model: 'model-a, model-b', selectedModel: 'model-b' })
     const settings = parseServerSettingsConfig(document)
@@ -300,10 +305,12 @@ describe('server settings', () => {
     Object.assign(document.settings, { customProviders: [{
       id: 'custom-models',
       name: '多模型服务',
+      imageSize: { mode: 'pixels' },
       submit: { path: 'images/generations' },
       modelOverrides: [{
         models: ['gemini-*'],
-        submit: { path: 'google/generate', taskIdPath: 'task.id' },
+        imageSize: { mode: 'aspect-ratio', ratios: ['1:1', '16:9'], resolutions: ['1K', '2K'] },
+        submit: { path: 'google/generate', taskIdPath: 'task.id', omitValues: { '$params.size': ['auto'] } },
         poll: { path: 'tasks/{task_id}', statusPath: 'status', result: { imageUrlPaths: ['imageUrl'] } },
       }],
     }] })
@@ -314,6 +321,8 @@ describe('server settings', () => {
 
     expect(cached.customProviders[0].modelOverrides?.[0].models).toEqual(['gemini-*'])
     expect(provider.submit).toMatchObject({ path: 'google/generate', taskIdPath: 'task.id' })
+    expect(provider.submit.omitValues).toEqual({ '$params.size': ['auto'] })
+    expect(provider.imageSize).toEqual({ mode: 'aspect-ratio', ratios: ['1:1', '16:9'], resolutions: ['1K', '2K'] })
     expect(provider.poll).toMatchObject({ path: 'tasks/{task_id}', statusPath: 'status' })
     expect(cached.profiles[0]).toMatchObject({ provider: 'custom-models', selectedModel: 'gemini-image', apiKey: '' })
   })

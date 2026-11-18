@@ -299,7 +299,9 @@ npm run deploy:cf
         "baseUrl": "https://api.openai.com/v1",
         "apiKey": "",
         "model": "gpt-image-2.6-sunburst",
+        "showInModelList": false,
         "svgModel": "gpt-6.1-sol",
+        "svgReasoningEffort": "medium",
         "timeout": 600,
         "apiMode": "images",
         "codexCli": false,
@@ -335,7 +337,7 @@ npm run deploy:cf
 }
 ```
 
-`imageGenerationModel` 仅用于 Responses API 的 `image_generation` 工具，建议显式填写实际可用的图片模型；留空或省略时不发送工具模型 ID，由上游接口决定。`reasoningEffort` 仅用于 Responses API，可设置为 `none`、`minimal`、`low`、`medium`、`high`、`xhigh` 或 `max`。`responseFormatB64Json: true` 会要求 Images API 直接返回 Base64 图片，并非所有服务商或网关都支持；关闭时可设为 `false` 或省略。`transparentBackgroundMethod` 可设为 `api`（接口原生透明背景）或 `local`（浏览器本地后处理）。`activeProfileId` 指定画廊配置，`agentTextProfileId` 指定 Agent 的主配置；`hybrid` 模式还会使用 `agentImageProfileId` 指定 Agent 图像配置。默认服务开启时，设置页会随画廊或 Agent 模式自动展示对应的主配置。
+`imageGenerationModel` 用于 Responses API 的 `image_generation` 工具，留空时由上游选择图像模型。`reasoningEffort` 控制 Responses 推理强度。`responseFormatB64Json: true` 请求 Base64 图片，`false` 明确关闭，省略时由程序按服务商地址选择。`transparentBackgroundMethod` 可设为 `api`（接口原生透明背景）或 `local`（本地后处理）。`activeProfileId` 指定画廊配置，`agentTextProfileId` 指定 Agent 文本配置，`hybrid` 模式使用 `agentImageProfileId` 指定图像配置。
 
 多配置时，`isDefault: true` 必须且只能标记一项，用于表示部署默认配置；`activeProfileId` 则决定默认服务加载后实际使用的活动配置，两者建议指向同一 profile。仓库中的 `public/app-config.json` 提供完整默认示例。部署时可以替换该文件；Docker 可将自定义文件只读挂载到 `/usr/share/nginx/html/app-config.json`。服务端文件中的 API Key 会被忽略，且 profile ID 在更新配置时应保持稳定。`providerDrafts` 是浏览器切换供应商时使用的内部草稿状态，不应写入服务端配置。
 
@@ -343,11 +345,11 @@ npm run deploy:cf
 
 重试方式 `retryMode` 同样属于本地习惯配置，可设为 `new`（新建任务，默认）、`overwriteFailed`（覆盖失败任务）或 `overwriteAll`（覆盖任何任务）。只有开启 `alwaysShowRetryButton` 时才允许 `overwriteAll`；关闭后回退为 `overwriteFailed`。默认服务下可修改并跨刷新保留，服务器重新下发配置不会覆盖本地选择；Agent 图片卡片仍始终新建任务。
 
-新版 `svgModel` 是生成 SVG 时使用的文本模型，与图像 `model` 分开设置；缺省为 `gpt-6.1-sol`。SVG、GIF 和复杂度的可用性由主线按图像模型判断，需使用支持这些能力的 GPT Image 2.6 或更新模型。上例演示新版模型；仓库 `public/app-config.json` 中显式配置的业务模型仍予以保留，部署时可按上游支持情况调整。
+`svgModel` 和 `svgReasoningEffort` 分别指定 SVG 编写模型及其推理强度。推理强度可留空使用模型默认值。支持的取值和不同接口的默认模型见下文配置字段表。首页模型选择器可搜索当前配置的模型。自定义模式下可通过 `showInModelList` 把其他配置加入列表。
 
 `saveTasksToActiveFavoriteCollection`、`privacyModeShortcut`、`colorMode`、`uiFont` / `uiFontName`、`monoFont` / `monoFontName`，以及客户端的 `saveLocationMode`、`writeLogFile` 和更新检查 `autoCheckUpdate` 也作为本地偏好保留，默认服务下可修改，服务器刷新不会覆盖。客户端网络代理仍使用主线独立的本机代理设置，不与网页版 `/api-proxy/` 混用。链接按部署策略确认或直接导入，`apiKey` 写入本地 Key，服务器参数仍保持只读。
 
-图像提示词开关 `imagePromptHints` 属于本地习惯配置，默认开启，可在默认服务下修改并跨刷新保留。服务器配置支持 Google、xAI 和自定义服务商的 `modelOverrides`，使用方式沿用主线配置说明，不会自动替换当前业务 profile。
+图像提示词开关 `imagePromptHints` 默认开启，可在默认服务下修改并在当前浏览器保存。服务器配置支持 Google、xAI、字节跳动和自定义服务商。自定义服务商的 `modelOverrides`、`imageSize` 和 `omitValues` 见下文配置说明。
 
 ```bash
 docker run -d -p 8080:80 \

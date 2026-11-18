@@ -44,6 +44,7 @@ describe('参考图超限提示', () => {
     vi.stubGlobal('innerWidth', 400)
     useStore.setState({
       settings: normalizeSettings({ ...DEFAULT_SETTINGS, profiles: [profile], activeProfileId: profile.id }),
+      defaultServiceEnabled: false,
       appMode: 'gallery', inputImages: images, maskDraft: null, prompt: '',
       params: { ...DEFAULT_PARAMS },
       reusedTaskApiProfileId: null, reusedTaskApiModel: null, tasks: [],
@@ -72,6 +73,21 @@ describe('参考图超限提示', () => {
     act(() => useStore.getState().setSettings({ profiles: [{ ...profile, model: 'xai/grok-imagine-image/v2.0' }] }))
     expect(container.querySelectorAll('.grayscale')).toHaveLength(0)
     expect(useStore.getState().inputImages).toEqual(images)
+  })
+
+  it.each([true, false])('按默认服务状态 %s 显示可用的模型配置', (defaultServiceEnabled) => {
+    const other = createDefaultFalProfile({ id: 'other', name: '另一个配置', model: 'other-model', showInModelList: true })
+    const settings = normalizeSettings({ profiles: [{ ...profile, model: 'first-model, second-model' }, other], activeProfileId: profile.id })
+    act(() => useStore.setState({ settings, defaultServiceEnabled, serverSettingsCache: defaultServiceEnabled ? settings : null }))
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-label="模型 first-model"]')!
+    act(() => trigger.click())
+
+    const target = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.trim() === (defaultServiceEnabled ? 'second-model' : 'other-model'))!
+    if (defaultServiceEnabled) expect(container.textContent).not.toContain('other-model')
+    act(() => target.click())
+
+    expect(useStore.getState().settings.activeProfileId).toBe(defaultServiceEnabled ? profile.id : other.id)
+    expect(container.querySelector(`button[aria-label="模型 ${defaultServiceEnabled ? 'second-model' : 'other-model'}"]`)).not.toBeNull()
   })
 
   it('长按显示原因，松开后的兼容点击不会打开预览', () => {

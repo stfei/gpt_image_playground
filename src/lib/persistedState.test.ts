@@ -170,6 +170,8 @@ describe('persisted state codec', () => {
       model: 'server-model',
       imageGenerationModel: 'server-image-model',
       svgModel: 'server-svg-model',
+      svgReasoningEffort: 'high',
+      showInModelList: true,
       selectedModel: 'server-model',
       apiMode: 'responses',
       reasoningEffort: 'medium',
@@ -263,10 +265,12 @@ describe('persisted state codec', () => {
     expect(result.state.customSettingsBackup?.model).toBe('custom-model')
     expect(result.state.settings).toMatchObject(getLocalPreferenceSettings(customSettings))
     expect(result.state.settings.profiles[1].svgModel).toBe('server-svg-model')
+    expect(result.state.serverSettingsCache?.profiles[1]).toMatchObject({ svgReasoningEffort: 'high', showInModelList: true, apiKey: '' })
+    expect(result.state.settings.profiles[1]).toMatchObject({ svgReasoningEffort: 'high', showInModelList: true, apiKey: 'local-key' })
   })
 
   it('round-trips native image parameters with default service settings', () => {
-    const params = { ...DEFAULT_PARAMS, aspect_ratio: '16:9', resolution: '2K', google_search: true, image_search: true, thinking_level: 'high' as const }
+    const params = { ...DEFAULT_PARAMS, aspect_ratio: '16:9', resolution: '2K', google_search: true, image_search: true, thinking_level: 'high' as const, watermark: false, background: 'opaque' as const }
     const encoded = createPersistedState({
       ...source(),
       params,
