@@ -4,10 +4,10 @@
 
 ## 1. 当前基线与使用范围
 
-- 整理日期：2026-11-09。
-- 主线基线：`main` 的 `6f8f44d`，应用版本 `0.9.0`；`v0.9.0` 标签为 `5e1f5e7`，主线还包含标签之后的文档和设置说明修正。
-- 功能基线：`dev2` 的 `58c6cd7`，相对上述主线有 14 个提交（原有 13 个提交及本轮兼容提交）；本文档的本轮更新另计。
-- 最近一次变基恢复分支：`codex/dev2-before-main-rebase-20261109`，指向变基前的 `e989955`。此前恢复分支仍保留；下次变基另建恢复分支，不覆盖已有恢复点。
+- 整理日期为 2026-11-18。
+- 主线基线为 `5514e61`，与 `v0.9.5` 标签一致。
+- 功能基线为 `dev2` 的 `5063cf7`，包括原有 15 个提交和本轮兼容提交。本次文档更新单独提交。
+- 恢复分支 `codex/dev2-before-main-rebase-20261118` 指向变基前的 `f71166b`。
 - 本地变基不等于推送。变基后 `dev2` 与 `my/dev2` 的旧历史出现 ahead/behind 属于可能的正常结果，不能据此直接拉取、合并或强推。
 
 提交哈希、版本、模型 ID 和业务配置是当前快照，不是下次变基必须照搬的常量。功能行为以当前实现及测试为准；新增需求应同步更新本文。
@@ -47,13 +47,13 @@
 | 字段或字段组 | 当前语义与保留要求 |
 | --- | --- |
 | `profiles`、`customProviders`、`activeProfileId` | 保留业务 profile 和稳定 ID；画廊由 `activeProfileId` 决定。 |
-| `provider`、`customProviders[].modelOverrides` | 支持主线的 Google/xAI 类型及按模型通配符选择 submit/editSubmit/poll；解析、Key 注入和缓存不能丢失原生类型或异步映射。 |
+| `provider`、`customProviders[].modelOverrides` | 支持主线的 Google、xAI、字节跳动及按模型通配符选择 `submit`、`editSubmit`、`poll`。同一套归一化保留 `imageSize` 和模板变量的 `omitValues`。 |
 | `isDefault` | 部署默认标记，与活动 ID 不是同一个字段；多配置示例只标记一个默认项，建议与画廊活动项一致。 |
 | `model`、`selectedModel` | `model` 支持中英文逗号分隔的模型列表；`selectedModel` 是列表内的当前选择，不是可任意填写的新模型。 |
 | `imageGenerationModel` | Responses API 的 `image_generation` 工具模型，与文本模型分开；留空时不发送工具模型 ID。 |
-| `svgModel` | 输出 SVG 时使用的文本模型，默认 `gpt-6.1-sol`；必须经过解析、缓存、Key 注入和持久化保留。不要把它与图像模型混淆。 |
+| `svgModel`、`svgReasoningEffort` | SVG 编写模型和独立推理强度，随 profile 解析及持久化。模型缺省行为按 Images、Responses 或 fal.ai 接口决定，推理强度可留空。 |
 | `reasoningEffort` | Responses 推理强度：`none` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`。无效值由主线归一化清除，回到其默认处理逻辑。 |
-| `responseFormatB64Json` | `true` 要求兼容的 Images 接口返回 Base64；并非所有网关支持。`false` 可能在归一化后省略，不能把省略误判为功能丢失。 |
+| `responseFormatB64Json` | `true` 请求 Base64，`false` 明确关闭，省略时由程序按端和服务商地址选择。显式 `false` 应在归一化后保留。 |
 | `transparentBackgroundMethod` | `api` 使用接口透明背景；`local` 使用浏览器本地后处理。 |
 | `apiMode`、`codexCli`、`apiProxy`、`timeout`、流式图片字段 | 沿用主线各供应商和 API 模式的归一化及实际请求语义，不能只保留 JSON 中的字段名。 |
 | `agentApiConfigMode`、`agentTextProfileId`、`agentImageProfileId` | 保留 Agent 配置选择、图像分流及相关服务器参数；不能默认回退到画廊配置。 |
@@ -65,6 +65,8 @@
 `complexity`、`frame_count`、`frame_duration_ms` 和 SVG/GIF 的 `output_format` 属于任务参数，继续使用主线 `TaskParams` 和参数归一化，不把它们误写成 API profile 属性。
 
 v0.9.0 的 `aspect_ratio`、`resolution`、`google_search`、`image_search`、`thinking_level` 也属于任务参数。保留它们的持久化以及任务的 `searchGrounding`、`promptHints`、`paramSupport`，请求与界面继续由主线按供应商/模型判断支持情况。现有业务文件不自动增加 Google/xAI profile 或修改模型。
+
+v0.9.5 的 `watermark` 和 `background` 同样由主线任务参数归一化处理。业务示例保留原有模型和代理配置。
 
 ### 3.3 默认服务开关、持久化与 Key 隔离
 
@@ -94,7 +96,7 @@ v0.9.0 的 `aspect_ratio`、`resolution`、`google_search`、`image_search`、`t
 - 当前部署为 `hybrid`，文本为 `responses-api`，图像为 `default-openai`。
 - 设置页自动展示对应配置；API 与 Agent 参数仍只读，新增、复制、编辑、删除、拖动 profile 的入口不可用。
 
-但首页允许选择服务器在该 profile 的 `model` 列表中列出的模型：
+首页模型选择器可搜索并选择服务器指定配置中的模型。自定义模式下，画廊支持通过 `showInModelList` 列出其他配置并切换。服务器模式沿用 `activeProfileId` 和 Agent 分流规则。
 
 - `setSettings()` 只接受已存在服务器 profile 的合法 `selectedModel`，不能借同一次更新修改 `baseUrl`、`model` 列表或其它受控参数。
 - 选择写入无密钥服务器缓存，可跨刷新及默认服务开关保留，不修改自定义备份。
@@ -171,7 +173,7 @@ npm run build
 
 ## 6. 已被后续修改取代的历史行为
 
-- `154dd23` 曾允许手动切换服务器活动 profile 并记忆 ID；后续 `9c08ce9` 改为画廊/Agent 自动分流。不能按早期提交标题重新添加 `setDefaultServiceActiveProfile` 或记忆手动活动 ID。
+- `457dcbc` 曾允许手动切换服务器活动 profile 并记忆 ID；后续 `caf1254` 改为画廊/Agent 自动分流。不能按早期提交标题重新添加 `setDefaultServiceActiveProfile` 或记忆手动活动 ID。
 - 早期方案曾因当时主线移除字段而删除 `referenceImageEditAction`；新版主线重新引入该字段支持画板/蒙版，当前必须保留并作为本地偏好。
 - 早期服务器活动项、Agent 模式、模型和 `codexCli` 值可能与当前业务文件不同；以最终部署示例和测试为准。
 - 最初“3 个逻辑提交”的历史目标不再对应当前分支的实际提交数量。下次应保留全部有效增量，不自行压缩或丢弃后续提交。
@@ -247,20 +249,22 @@ if ($deployErrors.Count) { throw ($deployErrors | Out-String) }
 
 | 当前提交 | 功能来源 |
 | --- | --- |
-| `3b11ea6` | 服务器下发设置、默认服务、本地习惯/Key/备份隔离、持久化与测试。 |
-| `a9ce703` | dist Dockerfile、Compose、PowerShell 构建脚本及部署防护。 |
-| `7193a56` | 站点品牌与页头链接。 |
-| `372720e` | 业务部署配置调整。 |
-| `154dd23` | 历史服务器 profile 切换及密钥隔离；手动切换部分已被后续提交取代。 |
-| `32e4ffd` | 前端代理构建方法及环境变量文档。 |
-| `15cf822` | 服务器配置与图片工具模型相关配置/说明调整。 |
-| `9c08ce9` | 画廊与 Agent 自动分流及最终业务配置/文档。 |
-| `52f11e2` | 主线多模型选择、批量与画板本地偏好、预置 Agent 持久化兼容。 |
-| `4a6b1c6` | 主线重试方式的服务器模式本地偏好、配置示例及持久化/实际调用回归覆盖。 |
-| `b3f0ef8` | 首版功能保留文档与 README 入口。 |
-| `665d2fa` | v0.8.8 新偏好、SVG 模型、链接确认、Web/桌面隔离、版本 2/4 迁移及 dist 字体部署兼容。 |
-| `8bb16c0` | v0.8.8 变基清单与验证记录。 |
-| `58c6cd7` | v0.9.0 图像提示词偏好、确认弹窗运行变量、多供应商及模型映射/持久化回归覆盖。 |
+| `bdefe95` | 服务器下发设置、默认服务、本地习惯/Key/备份隔离、持久化与测试。 |
+| `516ee1f` | dist Dockerfile、Compose、PowerShell 构建脚本及部署防护。 |
+| `bff40ec` | 站点品牌与页头链接。 |
+| `08c1611` | 业务部署配置调整。 |
+| `457dcbc` | 历史服务器 profile 切换及密钥隔离。 |
+| `580fa87` | 前端代理构建方法及环境变量文档。 |
+| `16ade96` | 服务器配置与图片工具模型说明。 |
+| `caf1254` | 画廊与 Agent 自动分流及业务配置。 |
+| `400a4eb` | 多模型选择、批量与画板本地偏好、预置 Agent 持久化兼容。 |
+| `18d3a5d` | 主线重试方式的服务器模式兼容。 |
+| `8f2060a` | 首版功能保留文档与 README 入口。 |
+| `8dd32f2` | v0.8.8 服务器设置、Web/桌面隔离、持久化迁移及字体部署兼容。 |
+| `95d5af8` | v0.8.8 变基清单与验证记录。 |
+| `b68e9af` | v0.9.0 图像提示词偏好、确认弹窗运行变量及多供应商设置。 |
+| `2b1d4e3` | v0.9.0 变基清单与验证记录。 |
+| `5063cf7` | v0.9.5 模型选择、新版服务器字段及回归测试。 |
 
 ## 9. v0.7.17 变基验证记录（2026-10-09）
 
@@ -293,3 +297,11 @@ if ($deployErrors.Count) { throw ($deployErrors | Out-String) }
 - PowerShell 语法和 Compose 配置展开通过；版本/Service Worker、业务配置、差异格式及主线核心文件一致性检查通过，未启动容器。
 - Google/xAI API、模型映射、异步任务、搜索及详情模块、Rust 工程和依赖锁文件与主线一致；依赖仅随主线更新应用版本，没有增减依赖，保留主线许可清单。
 - 本机仍无 Rust/Cargo；桌面安装包/原生运行、浏览器交互、容器运行和真实上游 API 未实测。
+
+## 12. v0.9.5 变基验证记录（2026-11-18）
+
+- `main` 和 `v0.9.5` 指向 `5514e61`，原有 15 个提交均已重放。两处 Store 冲突涉及导入合并，保留主线图片引用处理和服务器设置。恢复点为 `codex/dev2-before-main-rebase-20261118`。
+- 默认服务下的模型搜索限于服务器指定配置，自定义模式支持跨配置切换。组件测试覆盖两种模式。配置测试覆盖 SVG 推理强度、Base64 显式关闭、字节跳动 profile、自定义尺寸和省略规则。
+- Node 24.19.0 下普通构建和 dist 构建通过。定向测试 382 项通过，全量测试 83 个文件共 1422 项通过。PowerShell 语法、Compose 配置、只读挂载、12 项运行时占位符及差异检查通过。
+- 主线 Codex CLI、API 路由和多图处理的关键实现与 `main` 一致。依赖仅更新应用版本号，沿用主线第三方许可清单。
+- 桌面安装包、真实浏览器、容器运行和上游 API 未实测。工作保存在本地分支。
